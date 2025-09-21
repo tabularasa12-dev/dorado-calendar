@@ -4,7 +4,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const dns = require('node:dns');
-dns.setDefaultResultOrder?.('ipv4first'); // prefer IPv4
+dns.setDefaultResultOrder?.('ipv4first'); // prefer IPv4 if possible
 
 const { Pool } = require('pg');
 const { createClient } = require('@supabase/supabase-js');
@@ -16,29 +16,46 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-// -------------------- Supabase HTTPS client --------------------
+// -------------------- Supabase HTTPS client (port 443) --------------------
 const supabase = createClient(
   process.env.SUPABASE_URL || '',
   process.env.SUPABASE_ANON_KEY || ''
 );
 
-// -------------------- Postgres Pool (direct) --------------------
+// -------------------- Optional direct Postgres (5432) --------------------
 let pool = null;
 if (process.env.DATABASE_URL) {
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
+    // Force IPv4 host resolution to avoid EHOSTUNREACH on IPv6-only lookups
     lookup: (hostname, _opts, cb) => dns.lookup(hostname, { family: 4 }, cb),
   });
 }
 
-// -------------------- Routes --------------------
-
-// Direct Postgres health check
-app.get('/api/health', async (_req, res) => {
-  if (!pool) {
-    return res.status(500).json({ status: 'error', error: 'DATABASE_URL not configured' });
+// -------------------- Validators --------------------
+const isIsoDate = (s) => {
+  if (typeof s !== 'string') return false;
+  const d = new Date(s);
+  // must parse and include a timezone (Z or ±hh:mm)
+  return !isNaN(d.getTime()) && s.includes('T') && /Z$|[+-]\d{2}:\d{2}$/.test(s);
+};
+const ensureEventPayload = (body) => {
+  const errors = [];
+  if (body.title === undefined) errors.push('title is required');
+  if (body.starts_at === undefined) errors.push('starts_at is required');
+  if (body.title && (typeof body.title !== 'string' || body.title.length < 1 || body.title.length > 200)) {
+    errors.push('title must be 1–200 chars');
   }
+  if (body.starts_at && !isIsoDate(body.starts_at)) {
+    errors.push('starts_at must be ISO datetime, e.g. 2025-09-21T18:00:00Z');
+  }
+  return errors;
+};
+
+// -------------------- Health routes --------------------
+app.get('/api/health', async (_req, res) => {
+  if (!pool) return res.status(500).json({ status: 'error', error: 'DATABASE_URL not configured' });
   try {
     const r = await pool.query('SELECT NOW() AS now');
     res.json({ status: 'ok', via: 'postgres', time: r.rows[0].now });
@@ -48,7 +65,6 @@ app.get('/api/health', async (_req, res) => {
   }
 });
 
-// HTTPS health check via Supabase client
 app.get('/api/health-rest', async (_req, res) => {
   try {
     const { data, error } = await supabase.auth.getSession();
@@ -60,16 +76,28 @@ app.get('/api/health-rest', async (_req, res) => {
   }
 });
 
-// -------------------- Events CRUD --------------------
+// -------------------- Events CRUD (via supabase-js) --------------------
 
-// List events
+// List events with limit and optional time range filters
+// GET /api/events?limit=100&from=2025-09-20T00:00:00Z&to=2025-09-22T00:00:00Z
 app.get('/api/events', async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('events')
-      .select('*')
-      .order('starts_at', { ascending: true })
-      .limit(Number(req.query.limit || 100));
+    const limit = Math.max(1, Math.min(200, Number(req.query.limit || 100)));
+    const from = req.query.from;
+    const to = req.query.to;
+
+    let q = supabase.from('events').select('*').order('starts_at', { ascending: true }).limit(limit);
+
+    if (from) {
+      if (!isIsoDate(from)) return res.status(400).json({ error: 'from must be ISO datetime' });
+      q = q.gte('starts_at', from);
+    }
+    if (to) {
+      if (!isIsoDate(to)) return res.status(400).json({ error: 'to must be ISO datetime' });
+      q = q.lte('starts_at', to);
+    }
+
+    const { data, error } = await q;
     if (error) throw error;
     res.json(data);
   } catch (e) {
@@ -80,10 +108,10 @@ app.get('/api/events', async (req, res) => {
 // Create event
 app.post('/api/events', async (req, res) => {
   try {
-    const { title, starts_at } = req.body || {};
-    if (!title || !starts_at) {
-      return res.status(400).json({ error: 'title and starts_at are required' });
-    }
+    const errors = ensureEventPayload(req.body || {});
+    if (errors.length) return res.status(400).json({ error: errors.join('; ') });
+
+    const { title, starts_at } = req.body;
     const { data, error } = await supabase
       .from('events')
       .insert([{ title, starts_at }])
@@ -101,11 +129,23 @@ app.patch('/api/events/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const patch = {};
-    if (req.body.title !== undefined) patch.title = req.body.title;
-    if (req.body.starts_at !== undefined) patch.starts_at = req.body.starts_at;
-    if (!Object.keys(patch).length) {
-      return res.status(400).json({ error: 'No fields to update' });
+
+    if ('title' in req.body) {
+      if (typeof req.body.title !== 'string' || req.body.title.length < 1 || req.body.title.length > 200) {
+        return res.status(400).json({ error: 'title must be 1–200 chars' });
+      }
+      patch.title = req.body.title;
     }
+
+    if ('starts_at' in req.body) {
+      if (!isIsoDate(req.body.starts_at)) {
+        return res.status(400).json({ error: 'starts_at must be ISO datetime, e.g. 2025-09-21T18:00:00Z' });
+      }
+      patch.starts_at = req.body.starts_at;
+    }
+
+    if (!Object.keys(patch).length) return res.status(400).json({ error: 'No fields to update' });
+
     const { data, error } = await supabase
       .from('events')
       .update(patch)
@@ -131,7 +171,7 @@ app.delete('/api/events/:id', async (req, res) => {
   }
 });
 
-// Root route
+// -------------------- Root & server --------------------
 app.get('/', (_req, res) => {
   res.json({
     service: 'dorado-calendar',
@@ -139,12 +179,11 @@ app.get('/', (_req, res) => {
   });
 });
 
-// -------------------- Start server --------------------
 const server = app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
 
-// -------------------- Graceful shutdown --------------------
+// Graceful shutdown
 const shutdown = async (signal) => {
   console.log(`\n${signal} received. Shutting down...`);
   try {
