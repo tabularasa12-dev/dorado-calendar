@@ -8,11 +8,15 @@ dns.setDefaultResultOrder?.('ipv4first'); // prefer IPv4 if possible
 
 const { Pool } = require('pg');
 const { createClient } = require('@supabase/supabase-js');
+const path = require('node:path');
 
 // -------------------- App setup --------------------
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// 👉 Serve static files (UI in /public)
+app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 3000;
 
@@ -28,7 +32,7 @@ if (process.env.DATABASE_URL) {
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
-    // Force IPv4 host resolution to avoid EHOSTUNREACH on IPv6-only lookups
+    // Force IPv4 host resolution
     lookup: (hostname, _opts, cb) => dns.lookup(hostname, { family: 4 }, cb),
   });
 }
@@ -37,7 +41,6 @@ if (process.env.DATABASE_URL) {
 const isIsoDate = (s) => {
   if (typeof s !== 'string') return false;
   const d = new Date(s);
-  // must parse and include a timezone (Z or ±hh:mm)
   return !isNaN(d.getTime()) && s.includes('T') && /Z$|[+-]\d{2}:\d{2}$/.test(s);
 };
 const ensureEventPayload = (body) => {
@@ -78,8 +81,7 @@ app.get('/api/health-rest', async (_req, res) => {
 
 // -------------------- Events CRUD (via supabase-js) --------------------
 
-// List events with limit and optional time range filters
-// GET /api/events?limit=100&from=2025-09-20T00:00:00Z&to=2025-09-22T00:00:00Z
+// List events with limit and optional date filters
 app.get('/api/events', async (req, res) => {
   try {
     const limit = Math.max(1, Math.min(200, Number(req.query.limit || 100)));
