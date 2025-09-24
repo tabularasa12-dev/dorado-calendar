@@ -1,186 +1,65 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>Dorado Calendar</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-50 min-h-screen">
-  <div class="max-w-2xl mx-auto p-6">
-    <h1 class="text-2xl font-bold mb-4">Dorado Calendar</h1>
+<body class="bg-gray-50 p-8">
+  <h1 class="text-2xl font-bold mb-4">Dorado Calendar</h1>
 
-    <!-- Alerts -->
-    <div id="alert" class="hidden mb-4 p-3 rounded text-sm"></div>
+  <!-- Form -->
+  <form id="eventForm" class="mb-6">
+    <input id="title" placeholder="Event title"
+      class="border p-2 mr-2 rounded" required />
+    <input id="starts_at" type="datetime-local"
+      class="border p-2 mr-2 rounded" required />
+    <button class="bg-blue-500 text-white px-4 py-2 rounded">Add Event</button>
+  </form>
 
-    <!-- Form -->
-    <form id="eventForm" class="mb-6 grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-2">
-      <input id="title" placeholder="Event title" class="border p-2 rounded" required />
-      <input id="starts_at" type="datetime-local" class="border p-2 rounded" required />
-      <button class="bg-blue-600 text-white px-4 py-2 rounded">Add</button>
-      <button type="button" id="refresh" class="bg-gray-200 px-3 py-2 rounded">Refresh</button>
-    </form>
-
-    <!-- List -->
-    <ul id="events" class="space-y-2"></ul>
-  </div>
+  <!-- List -->
+  <ul id="events" class="space-y-2"></ul>
 
   <script>
     const API = '/api/events';
-    const alertEl = document.getElementById('alert');
-
-    function showAlert(msg, type = 'ok') {
-      alertEl.textContent = msg;
-      alertEl.className = 'mb-4 p-3 rounded text-sm ' +
-        (type === 'ok' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
-      alertEl.classList.remove('hidden');
-      setTimeout(() => alertEl.classList.add('hidden'), 2500);
-    }
 
     async function loadEvents() {
+      const res = await fetch(API);
+      const data = await res.json();
       const list = document.getElementById('events');
-      list.innerHTML = '<li class="text-gray-500">Loading…</li>';
-      try {
-        const res = await fetch(API);
-        const events = await res.json();
-        list.innerHTML = '';
-        if (!events.length) {
-          list.innerHTML = '<li class="text-gray-500">No events yet.</li>';
-          return;
-        }
-        events.forEach(ev => list.appendChild(renderItem(ev)));
-      } catch (e) {
-        list.innerHTML = '<li class="text-red-600">Failed to load events.</li>';
-      }
+      list.innerHTML = '';
+      data.forEach(ev => {
+        const li = document.createElement('li');
+        li.className = "bg-white p-3 rounded shadow flex justify-between items-center";
+        li.innerHTML = `
+          <span>${ev.title} — ${new Date(ev.starts_at).toLocaleString()}</span>
+          <button class="bg-red-500 text-white px-2 py-1 rounded"
+            onclick="if (confirm('Are you sure you want to delete this event?')) deleteEvent('${ev.id}')">
+            Delete
+          </button>
+        `;
+        list.appendChild(li);
+      });
     }
 
-    function renderItem(ev) {
-      const li = document.createElement('li');
-      li.className = "bg-white p-3 rounded shadow flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2";
-
-      const left = document.createElement('div');
-      left.className = "flex items-center gap-2";
-
-      // Title (text + inline input for edit)
-      const titleWrap = document.createElement('div');
-      const titleText = document.createElement('span');
-      titleText.textContent = ev.title + ' — ' + new Date(ev.starts_at).toLocaleString();
-      titleText.className = "titleText";
-
-      const editWrap = document.createElement('div');
-      editWrap.className = "hidden items-center gap-2";
-      const editInput = document.createElement('input');
-      editInput.className = "border p-1 rounded w-64";
-      editInput.value = ev.title;
-
-      const saveBtn = document.createElement('button');
-      saveBtn.className = "bg-green-600 text-white px-3 py-1 rounded";
-      saveBtn.textContent = "Save";
-
-      const cancelBtn = document.createElement('button');
-      cancelBtn.className = "bg-gray-200 px-3 py-1 rounded";
-      cancelBtn.type = "button";
-      cancelBtn.textContent = "Cancel";
-
-      editWrap.append(editInput, saveBtn, cancelBtn);
-      titleWrap.append(titleText, editWrap);
-      left.appendChild(titleWrap);
-
-      const right = document.createElement('div');
-      right.className = "flex items-center gap-2";
-
-      const editBtn = document.createElement('button');
-      editBtn.className = "bg-amber-500 text-white px-3 py-1 rounded";
-      editBtn.textContent = "Edit";
-
-      const delBtn = document.createElement('button');
-      delBtn.className = "bg-red-600 text-white px-3 py-1 rounded";
-      delBtn.textContent = "Delete";
-
-      right.append(editBtn, delBtn);
-      li.append(left, right);
-
-      // Handlers
-      editBtn.onclick = () => {
-        titleText.classList.add('hidden');
-        editWrap.classList.remove('hidden');
-        editInput.focus();
-        editInput.select();
-      };
-
-      cancelBtn.onclick = () => {
-        editWrap.classList.add('hidden');
-        titleText.classList.remove('hidden');
-        editInput.value = ev.title;
-      };
-
-      saveBtn.onclick = async (e) => {
-        e.preventDefault();
-        const newTitle = editInput.value.trim();
-        if (!newTitle) return showAlert('Title cannot be empty.', 'err');
-        if (newTitle.length > 200) return showAlert('Title too long (max 200).', 'err');
-        try {
-          const r = await fetch(API + '/' + ev.id, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: newTitle })
-          });
-          if (!r.ok) throw new Error('Update failed');
-          ev.title = newTitle;
-          titleText.textContent = ev.title + ' — ' + new Date(ev.starts_at).toLocaleString();
-          editWrap.classList.add('hidden');
-          titleText.classList.remove('hidden');
-          showAlert('Event updated.');
-        } catch (err) {
-          showAlert('Failed to update event.', 'err');
-        }
-      };
-
-      delBtn.onclick = async (e) => {
-        e.preventDefault();
-        try {
-          const r = await fetch(API + '/' + ev.id, { method: 'DELETE' });
-          if (!r.ok) throw new Error('Delete failed');
-          li.remove();
-          showAlert('Event deleted.');
-        } catch {
-          showAlert('Failed to delete event.', 'err');
-        }
-      };
-
-      return li;
+    async function deleteEvent(id) {
+      await fetch(API + '/' + id, { method: 'DELETE' });
+      loadEvents();
     }
 
     document.getElementById('eventForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const title = document.getElementById('title').value.trim();
-      const raw = document.getElementById('starts_at').value;
-      if (!title) return showAlert('Title is required.', 'err');
-      if (title.length > 200) return showAlert('Title too long (max 200).', 'err');
-      if (!raw) return showAlert('Start time is required.', 'err');
-
-      const iso = new Date(raw).toISOString();
-      if (Number.isNaN(Date.parse(iso))) return showAlert('Invalid date/time.', 'err');
-
-      try {
-        const r = await fetch(API, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, starts_at: iso })
-        });
-        if (!r.ok) {
-          const err = await r.json().catch(() => ({}));
-          throw new Error(err.error || 'Create failed');
-        }
-        e.target.reset();
-        showAlert('Event added.');
-        loadEvents();
-      } catch (err) {
-        showAlert(err.message || 'Failed to add event.', 'err');
-      }
+      const title = document.getElementById('title').value;
+      const starts_at = document.getElementById('starts_at').value;
+      await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, starts_at })
+      });
+      e.target.reset();
+      loadEvents();
     });
 
-    document.getElementById('refresh').onclick = loadEvents;
     loadEvents();
   </script>
 </body>
