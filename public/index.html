@@ -1,104 +1,33 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8" />
-  <title>Dorado Calendar</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-50 min-h-screen">
-  <div class="max-w-3xl mx-auto p-6">
-    <h1 class="text-2xl font-bold mb-4">Dorado Calendar</h1>
+<script>
+  async function loadEvents(){
+    const qs = buildQuery();
+    const url = `${BASE}?${qs}`;
+    // Show loading state
+    eventsEl.innerHTML = '<li class="text-gray-500">Loading…</li>';
 
-    <!-- Alerts -->
-    <div id="alert" class="hidden mb-4 p-3 rounded text-sm"></div>
-
-    <!-- Create Form -->
-    <form id="eventForm" class="mb-6 grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2">
-      <input id="title" placeholder="Event title" class="border p-2 rounded" required />
-      <input id="starts_at" type="datetime-local" class="border p-2 rounded" required />
-      <button class="bg-blue-600 text-white px-4 py-2 rounded">Add</button>
-    </form>
-
-    <!-- Filters -->
-    <div class="mb-4 grid grid-cols-1 sm:grid-cols-[auto_auto_auto_auto] gap-2 items-end">
-      <div>
-        <label class="block text-sm text-gray-700 mb-1">From (date)</label>
-        <input id="fromDate" type="date" class="border p-2 rounded w-full" />
-      </div>
-      <div>
-        <label class="block text-sm text-gray-700 mb-1">To (date)</label>
-        <input id="toDate" type="date" class="border p-2 rounded w-full" />
-      </div>
-      <div>
-        <label class="block text-sm text-gray-700 mb-1">Limit</label>
-        <select id="limit" class="border p-2 rounded w-full">
-          <option value="5">5</option>
-          <option value="10" selected>10</option>
-          <option value="20">20</option>
-          <option value="50">50</option>
-        </select>
-      </div>
-      <div class="flex gap-2">
-        <button id="applyFilters" class="bg-gray-800 text-white px-4 py-2 rounded w-full">Apply</button>
-      </div>
-    </div>
-
-    <!-- List -->
-    <ul id="events" class="space-y-2"></ul>
-  </div>
-
-  <script>
-    const BASE = '/api/events';
-    const alertEl = document.getElementById('alert');
-    const eventsEl = document.getElementById('events');
-
-    function showAlert(msg, ok=false){
-      alertEl.textContent = msg;
-      alertEl.className = 'mb-4 p-3 rounded text-sm ' + (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
-      alertEl.classList.remove('hidden');
-      setTimeout(() => alertEl.classList.add('hidden'), 2500);
-    }
-
-    // Helpers: convert YYYY-MM-DD to ISO bounds
-    function startOfDayISO(yyyyMmDd){
-      // treat the filter as local day start
-      const d = new Date(yyyyMmDd + 'T00:00:00');
-      return d.toISOString();
-    }
-    function endOfDayISO(yyyyMmDd){
-      // last millisecond of day -> next day 00:00 minus 1ms
-      const d = new Date(yyyyMmDd + 'T23:59:59');
-      return d.toISOString();
-    }
-
-    function buildQuery(){
-      const params = new URLSearchParams();
-      const from = document.getElementById('fromDate').value;
-      const to   = document.getElementById('toDate').value;
-      const limit = document.getElementById('limit').value || '10';
-
-      if (from) params.set('from', startOfDayISO(from));
-      if (to)   params.set('to',   endOfDayISO(to));
-      if (limit) params.set('limit', limit);
-
-      // cache-bust so we always see fresh data
-      params.set('ts', Date.now());
-      return params.toString();
-    }
-
-    async function loadEvents(){
-      eventsEl.innerHTML = '<li class="text-gray-500">Loading…</li>';
-      const qs = buildQuery();
-      const res = await fetch(`${BASE}?${qs}`, { cache: 'no-store' });
-      if (!res.ok){ eventsEl.innerHTML=''; showAlert('Failed to load events'); return; }
-      const data = await res.json();
-      eventsEl.innerHTML = '';
-      if (!Array.isArray(data) || data.length === 0){
-        eventsEl.innerHTML = '<li class="text-gray-500">No events found.</li>';
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) {
+        eventsEl.innerHTML = '<li class="text-red-600">Failed to load events.</li>';
         return;
       }
-      for (const ev of data){
+
+      const data = await res.json();
+
+      // Clear list
+      eventsEl.innerHTML = '';
+
+      // Robust empty-state check
+      if (!Array.isArray(data) || data.length === 0) {
+        eventsEl.innerHTML = `
+          <li class="bg-white p-3 rounded border text-gray-600">
+            No events found for the selected filters.
+          </li>`;
+        return;
+      }
+
+      // Render items
+      for (const ev of data) {
         const li = document.createElement('li');
         li.className = "bg-white p-3 rounded shadow flex justify-between items-center";
         li.innerHTML = `
@@ -110,45 +39,10 @@
         `;
         eventsEl.appendChild(li);
       }
+    } catch (err) {
+      console.error('loadEvents error:', err);
+      eventsEl.innerHTML = '<li class="text-red-600">Network error. Please try again.</li>';
     }
-
-    async function deleteEvent(id){
-      const r = await fetch(`${BASE}/${id}`, { method: 'DELETE' });
-      if (!r.ok) return showAlert('Could not delete event');
-      showAlert('Event deleted', true);
-      loadEvents();
-    }
-
-    document.getElementById('applyFilters').addEventListener('click', (e)=>{
-      e.preventDefault();
-      loadEvents();
-    });
-
-    document.getElementById('eventForm').addEventListener('submit', async (e)=>{
-      e.preventDefault();
-      const title = document.getElementById('title').value.trim();
-      const raw   = document.getElementById('starts_at').value;
-      if (!title || !raw) return showAlert('Title and start time are required');
-
-      // Convert datetime-local -> ISO (API expects ISO)
-      const iso = new Date(raw).toISOString();
-
-      const r = await fetch(BASE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, starts_at: iso })
-      });
-      const body = await r.json().catch(()=>({}));
-      if (!r.ok) return showAlert(body.error || 'Failed to add event');
-
-      e.target.reset();
-      showAlert('Event added', true);
-      loadEvents();
-    });
-
-    // Initial load
-    loadEvents();
-  </script>
-</body>
-</html>
+  }
+</script>
 
