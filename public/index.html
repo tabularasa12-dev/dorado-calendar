@@ -1,48 +1,145 @@
 <script>
-  async function loadEvents(){
-    const qs = buildQuery();
-    const url = `${BASE}?${qs}`;
-    // Show loading state
-    eventsEl.innerHTML = '<li class="text-gray-500">Loading…</li>';
+const API_BASE = window.location.origin + "/api";
 
-    try {
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) {
-        eventsEl.innerHTML = '<li class="text-red-600">Failed to load events.</li>';
-        return;
-      }
+async function fetchEvents() {
+  setLoading(true);
+  const list = document.getElementById('events');
+  list.innerHTML = "";
 
-      const data = await res.json();
+  try {
+    const res = await fetch(`${API_BASE}/events?${buildQuery()}`);
+    const events = await res.json();
 
-      // Clear list
-      eventsEl.innerHTML = '';
+    setLoading(false);
 
-      // Robust empty-state check
-      if (!Array.isArray(data) || data.length === 0) {
-        eventsEl.innerHTML = `
-          <li class="bg-white p-3 rounded border text-gray-600">
-            No events found for the selected filters.
-          </li>`;
-        return;
-      }
-
-      // Render items
-      for (const ev of data) {
-        const li = document.createElement('li');
-        li.className = "bg-white p-3 rounded shadow flex justify-between items-center";
-        li.innerHTML = `
-          <span>${ev.title} — ${new Date(ev.starts_at).toLocaleString()}</span>
-          <button class="bg-red-600 text-white px-2 py-1 rounded"
-            onclick="if (confirm('Are you sure you want to delete this event?')) deleteEvent('${ev.id}')">
-            Delete
-          </button>
-        `;
-        eventsEl.appendChild(li);
-      }
-    } catch (err) {
-      console.error('loadEvents error:', err);
-      eventsEl.innerHTML = '<li class="text-red-600">Network error. Please try again.</li>';
+    if (!Array.isArray(events) || events.length === 0) {
+      list.innerHTML = `<li class="text-gray-500">No events found</li>`;
+      return;
     }
+
+    events.forEach(ev => {
+      const li = document.createElement('li');
+      li.className = "p-2 border-b flex justify-between items-center";
+
+      li.innerHTML = `
+        <span><strong>${ev.title}</strong> — ${new Date(ev.starts_at).toLocaleString()}</span>
+        <div class="space-x-2">
+          <button class="bg-blue-500 text-white px-2 py-1 rounded" onclick="editEvent('${ev.id}', '${ev.title}')">Edit</button>
+          <button class="bg-red-500 text-white px-2 py-1 rounded" onclick="confirmDelete('${ev.id}')">Delete</button>
+        </div>
+      `;
+      list.appendChild(li);
+    });
+  } catch (err) {
+    console.error(err);
+    setLoading(false);
+    showAlert("Error loading events.");
   }
+}
+
+async function addEvent() {
+  const title = document.getElementById('title').value;
+  const starts_at = document.getElementById('starts_at').value;
+
+  try {
+    await fetch(`${API_BASE}/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, starts_at })
+    });
+    document.getElementById('title').value = "";
+    document.getElementById('starts_at').value = "";
+    fetchEvents();
+  } catch (err) {
+    showAlert("Failed to add event");
+  }
+}
+
+async function editEvent(id, oldTitle) {
+  const newTitle = prompt("Edit event title:", oldTitle);
+  if (!newTitle) return;
+
+  try {
+    await fetch(`${API_BASE}/events/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: newTitle })
+    });
+    fetchEvents();
+  } catch (err) {
+    showAlert("Failed to update event");
+  }
+}
+
+async function confirmDelete(id) {
+  if (!confirm("Are you sure you want to delete this event?")) return;
+  try {
+    await fetch(`${API_BASE}/events/${id}`, { method: "DELETE" });
+    fetchEvents();
+  } catch (err) {
+    showAlert("Failed to delete event");
+  }
+}
+
+function showAlert(msg) {
+  alert(msg);
+}
+
+function setLoading(on) {
+  document.getElementById('loading').style.display = on ? 'block' : 'none';
+}
+
+// ---- Date filter helpers ----
+function getDateFromInput(id) {
+  const el = document.getElementById(id);
+  if (el.valueAsDate instanceof Date && !isNaN(el.valueAsDate)) {
+    return new Date(Date.UTC(
+      el.valueAsDate.getFullYear(),
+      el.valueAsDate.getMonth(),
+      el.valueAsDate.getDate()
+    ));
+  }
+  const v = (el.value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const [y, m, d] = v.split('-').map(Number);
+  if (y < 2020 || y > 2035) return null;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return isNaN(dt) ? null : dt;
+}
+
+function startOfDayISO(id) {
+  const dt = getDateFromInput(id);
+  return dt ? dt.toISOString() : null;
+}
+
+function endOfDayISO(id) {
+  const dt = getDateFromInput(id);
+  if (!dt) return null;
+  const end = new Date(dt.getTime() + 24*60*60*1000 - 1);
+  return end.toISOString();
+}
+
+function buildQuery() {
+  const params = new URLSearchParams();
+  const fromISO = startOfDayISO('fromDate');
+  const toISO   = endOfDayISO('toDate');
+  const limit   = document.getElementById('limit').value || '10';
+
+  if (fromISO === null && document.getElementById('fromDate').value)
+    return showAlert('Please pick a valid From date.'), 'ts=' + Date.now();
+
+  if (toISO === null && document.getElementById('toDate').value)
+    return showAlert('Please pick a valid To date.'), 'ts=' + Date.now();
+
+  if (fromISO) params.set('from', fromISO);
+  if (toISO)   params.set('to', toISO);
+  if (limit)   params.set('limit', limit);
+
+  params.set('ts', Date.now()); // cache-bust
+  return params.toString();
+}
+
+// Initial load
+fetchEvents();
 </script>
 
