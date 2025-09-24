@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Dorado Calendar</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-50 p-8">
@@ -49,12 +50,16 @@
 
     document.getElementById('eventForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const title = document.getElementById('title').value;
-      const starts_at = document.getElementById('starts_at').value;
+      const title = document.getElementById('title').value.trim();
+      const raw = document.getElementById('starts_at').value;
+      // Convert datetime-local -> ISO string (API expects ISO)
+      const iso = new Date(raw).toISOString();
+
+      if (!title) return;
       await fetch(API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, starts_at })
+        body: JSON.stringify({ title, starts_at: iso })
       });
       e.target.reset();
       loadEvents();
