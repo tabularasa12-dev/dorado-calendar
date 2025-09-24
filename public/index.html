@@ -1,35 +1,49 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Dorado Calendar</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-50 p-8">
-  <h1 class="text-2xl font-bold mb-4">Dorado Calendar</h1>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-2xl mx-auto p-6">
+    <h1 class="text-2xl font-bold mb-4">Dorado Calendar</h1>
 
-  <!-- Form -->
-  <form id="eventForm" class="mb-6">
-    <input id="title" placeholder="Event title"
-      class="border p-2 mr-2 rounded" required />
-    <input id="starts_at" type="datetime-local"
-      class="border p-2 mr-2 rounded" required />
-    <button class="bg-blue-500 text-white px-4 py-2 rounded">Add Event</button>
-  </form>
+    <div id="alert" class="hidden mb-4 p-3 rounded text-sm"></div>
 
-  <!-- List -->
-  <ul id="events" class="space-y-2"></ul>
+    <form id="eventForm" class="mb-6 grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2">
+      <input id="title" placeholder="Event title" class="border p-2 rounded" required />
+      <input id="starts_at" type="datetime-local" class="border p-2 rounded" required />
+      <button class="bg-blue-600 text-white px-4 py-2 rounded">Add</button>
+    </form>
+
+    <ul id="events" class="space-y-2"></ul>
+  </div>
 
   <script>
-    const API = '/api/events';
+    const BASE = '/api/events';
+    const alertEl = document.getElementById('alert');
+    const eventsEl = document.getElementById('events');
 
-    async function loadEvents() {
-      const res = await fetch(API);
+    function showAlert(msg, ok=false){
+      alertEl.textContent = msg;
+      alertEl.className = 'mb-4 p-3 rounded text-sm ' + (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
+      alertEl.classList.remove('hidden');
+      setTimeout(() => alertEl.classList.add('hidden'), 2500);
+    }
+
+    async function loadEvents(){
+      // cache-bust the request so we don’t see stale cached responses
+      const res = await fetch(`${BASE}?ts=${Date.now()}`, { cache: 'no-store' });
+      if (!res.ok) { eventsEl.innerHTML = ''; showAlert('Failed to load events'); return; }
       const data = await res.json();
-      const list = document.getElementById('events');
-      list.innerHTML = '';
-      data.forEach(ev => {
+      eventsEl.innerHTML = '';
+      if (!Array.isArray(data) || data.length === 0){
+        eventsEl.innerHTML = '<li class="text-gray-500">No events yet.</li>';
+        return;
+      }
+      for (const ev of data){
         const li = document.createElement('li');
         li.className = "bg-white p-3 rounded shadow flex justify-between items-center";
         li.innerHTML = `
@@ -39,29 +53,37 @@
             Delete
           </button>
         `;
-        list.appendChild(li);
-      });
+        eventsEl.appendChild(li);
+      }
     }
 
-    async function deleteEvent(id) {
-      await fetch(API + '/' + id, { method: 'DELETE' });
+    async function deleteEvent(id){
+      const r = await fetch(`${BASE}/${id}`, { method: 'DELETE' });
+      if (!r.ok) return showAlert('Could not delete event');
+      showAlert('Event deleted', true);
       loadEvents();
     }
 
-    document.getElementById('eventForm').addEventListener('submit', async (e) => {
+    document.getElementById('eventForm').addEventListener('submit', async (e)=>{
       e.preventDefault();
       const title = document.getElementById('title').value.trim();
-      const raw = document.getElementById('starts_at').value;
-      // Convert datetime-local -> ISO string (API expects ISO)
+      const raw   = document.getElementById('starts_at').value;
+      if (!title || !raw) return;
+
+      // Convert datetime-local → ISO (API expects ISO)
       const iso = new Date(raw).toISOString();
 
-      if (!title) return;
-      await fetch(API, {
+      const r = await fetch(BASE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, starts_at: iso })
       });
+
+      const body = await r.json().catch(()=>({}));
+      if (!r.ok) return showAlert(body.error || 'Failed to add event');
+
       e.target.reset();
+      showAlert('Event added', true);
       loadEvents();
     });
 
