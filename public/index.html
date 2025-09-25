@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Dorado Calendar</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -10,78 +10,152 @@
   <div class="max-w-2xl mx-auto bg-white shadow-md rounded-lg p-6">
     <h1 class="text-2xl font-bold mb-4">📅 Dorado Calendar</h1>
 
+    <!-- Add Event -->
+    <form id="eventForm" class="mb-6 grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2">
+      <input id="title" placeholder="Event title" class="border rounded p-2" required />
+      <input id="starts_at" type="datetime-local" class="border rounded p-2" required />
+      <button class="bg-blue-600 text-white px-4 py-2 rounded">Add</button>
+    </form>
+
     <!-- Filters -->
-    <div class="mb-4">
-      <label class="block text-sm text-gray-700 mb-1">From (date)</label>
-      <input id="fromDate" type="date" class="border rounded p-2 w-full mb-2">
-
-      <label class="block text-sm text-gray-700 mb-1">To (date)</label>
-      <input id="toDate" type="date" class="border rounded p-2 w-full mb-2">
-
-      <label class="block text-sm text-gray-700 mb-1">Limit</label>
-      <input id="limit" type="number" min="1" max="50" value="10" class="border rounded p-2 w-full mb-2">
-
-      <button onclick="loadEvents()" class="bg-blue-500 text-white px-3 py-1 rounded">Refresh Events</button>
+    <div class="mb-4 grid grid-cols-1 sm:grid-cols-[auto_auto_auto_auto] gap-2 items-end">
+      <div>
+        <label class="block text-sm text-gray-700 mb-1">From (date)</label>
+        <input id="fromDate" type="date" class="border rounded p-2 w-full" />
+      </div>
+      <div>
+        <label class="block text-sm text-gray-700 mb-1">To (date)</label>
+        <input id="toDate" type="date" class="border rounded p-2 w-full" />
+      </div>
+      <div>
+        <label class="block text-sm text-gray-700 mb-1">Limit</label>
+        <select id="limit" class="border rounded p-2 w-full">
+          <option value="5">5</option>
+          <option value="10" selected>10</option>
+          <option value="20">20</option>
+          <option value="50">50</option>
+        </select>
+      </div>
+      <button id="applyFilters" class="bg-gray-800 text-white px-4 py-2 rounded">Apply</button>
     </div>
 
-    <!-- Loading + Event list -->
+    <!-- Alerts / Loading / List -->
+    <div id="alert" class="hidden mb-3 p-3 rounded text-sm"></div>
     <div id="loading" class="text-gray-500 mb-2" style="display:none">Loading…</div>
     <ul id="events" class="space-y-2"></ul>
   </div>
 
   <script>
-    async function loadEvents() {
-      setLoading(true);
-      try {
-        const from = document.getElementById('fromDate').value;
-        const to = document.getElementById('toDate').value;
-        const limit = document.getElementById('limit').value;
+    const BASE = '/api/events';
+    const alertEl = document.getElementById('alert');
+    const eventsEl = document.getElementById('events');
 
-        const params = new URLSearchParams();
-        if (from) params.append('from', new Date(from).toISOString());
-        if (to) params.append('to', new Date(to).toISOString());
-        if (limit) params.append('limit', limit);
-
-        const res = await fetch(`/api/events?${params.toString()}&v=${Date.now()}`);
-        const data = await res.json();
-        renderEvents(data);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    function renderEvents(events) {
-      const ul = document.getElementById('events');
-      ul.innerHTML = '';
-
-      if (!events || events.length === 0) {
-        ul.innerHTML = `<li class="text-gray-500">No events found</li>`;
-        return;
-      }
-
-      for (const ev of events) {
-        const li = document.createElement('li');
-        li.className = "border p-2 rounded flex justify-between items-center";
-        li.innerHTML = `
-          <span>${ev.title} (${new Date(ev.starts_at).toLocaleString()})</span>
-          <button class="bg-red-500 text-white px-2 py-1 rounded" onclick="deleteEvent('${ev.id}')">Delete</button>
-        `;
-        ul.appendChild(li);
-      }
-    }
-
-    async function deleteEvent(id) {
-      if (!confirm("Are you sure you want to delete this event?")) return;
-      await fetch(`/api/events/${id}`, { method: 'DELETE' });
-      loadEvents();
+    function showAlert(msg, ok=false){
+      alertEl.textContent = msg;
+      alertEl.className = 'mb-3 p-3 rounded text-sm ' + (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
+      alertEl.classList.remove('hidden');
+      setTimeout(() => alertEl.classList.add('hidden'), 2500);
     }
 
     function setLoading(on) {
       const el = document.getElementById('loading');
       if (el) el.style.display = on ? 'block' : 'none';
     }
+
+    // Build query from filters (with cache-bust)
+    function buildQuery(){
+      const params = new URLSearchParams();
+      const from = document.getElementById('fromDate').value;
+      const to   = document.getElementById('toDate').value;
+      const limit = document.getElementById('limit').value || '10';
+
+      if (from) params.set('from', new Date(from + 'T00:00').toISOString());
+      if (to)   params.set('to',   new Date(to   + 'T23:59').toISOString());
+      if (limit) params.set('limit', limit);
+
+      params.set('ts', Date.now());
+      return params.toString();
+    }
+
+    async function loadEvents(){
+      setLoading(true);
+      eventsEl.innerHTML = '';
+      try {
+        const qs = buildQuery();
+        const res = await fetch(`${BASE}?${qs}`, { cache: 'no-store' });
+        if (!res.ok) throw new Error('Failed to load events');
+        const data = await res.json();
+
+        if (!Array.isArray(data) || data.length === 0) {
+          eventsEl.innerHTML = '<li class="text-gray-500">No events found.</li>';
+          return;
+        }
+
+        for (const ev of data){
+          const li = document.createElement('li');
+          li.className = "border p-3 rounded flex justify-between items-center";
+          li.innerHTML = `
+            <span>${ev.title} — ${new Date(ev.starts_at).toLocaleString()}</span>
+            <button class="bg-red-600 text-white px-2 py-1 rounded"
+              onclick="if (confirm('Delete this event?')) deleteEvent('${ev.id}')">
+              Delete
+            </button>
+          `;
+          eventsEl.appendChild(li);
+        }
+      } catch (err) {
+        console.error(err);
+        showAlert('Failed to load events');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    async function deleteEvent(id){
+      try {
+        const r = await fetch(`${BASE}/${id}`, { method: 'DELETE' });
+        if (!r.ok) throw new Error('Delete failed');
+        showAlert('Event deleted', true);
+        loadEvents();
+      } catch {
+        showAlert('Could not delete event');
+      }
+    }
+
+    // Add Event handler
+    document.getElementById('eventForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = document.getElementById('title').value.trim();
+      const raw = document.getElementById('starts_at').value;
+
+      if (!title) return showAlert('Title is required');
+      if (!raw)   return showAlert('Start time is required');
+
+      // Convert datetime-local -> ISO (API expects ISO)
+      const iso = new Date(raw).toISOString();
+
+      try {
+        const r = await fetch(BASE, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, starts_at: iso })
+        });
+        const body = await r.json().catch(()=>({}));
+        if (!r.ok) throw new Error(body.error || 'Create failed');
+
+        e.target.reset();
+        showAlert('Event added', true);
+        loadEvents();
+      } catch (err) {
+        showAlert(err.message || 'Failed to add event');
+      }
+    });
+
+    // Apply filters
+    document.getElementById('applyFilters').addEventListener('click', (e)=>{
+      e.preventDefault();
+      loadEvents();
+    });
 
     // Initial load
     loadEvents();
