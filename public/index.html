@@ -2,164 +2,73 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Dorado Calendar</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="styles.css"/>
+  <style>
+    /* minimal sensible defaults in case styles.css is empty */
+    :root { color-scheme: light dark; }
+    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+    .container { max-width: 900px; margin: 0 auto; padding: 20px; }
+    h1 { margin: 0 0 16px; }
+    form, .controls { display: grid; gap: 8px; }
+    form { grid-template-columns: 1fr 220px 180px auto; align-items: center; }
+    @media (max-width: 800px) { form { grid-template-columns: 1fr 1fr 1fr; } form button { grid-column: 1 / -1; } }
+    input, select, button { padding: 10px; font-size: 14px; }
+    input, select { border: 1px solid #bbb; border-radius: 8px; background: inherit; }
+    button { border: 0; border-radius: 10px; background: #2563eb; color: white; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .controls { grid-template-columns: 1fr 200px 180px; margin-top: 16px; align-items: center; }
+    @media (max-width: 800px) { .controls { grid-template-columns: 1fr 1fr; } }
+    .status { margin: 12px 0; min-height: 20px; font-size: 14px; }
+    .status.ok { color: #10b981; }
+    .status.err { color: #ef4444; }
+    ul#events { list-style: none; padding: 0; margin: 16px 0; display: grid; gap: 8px; }
+    li.event { display: flex; justify-content: space-between; align-items: center; border: 1px solid #ddd; border-radius: 12px; padding: 10px 12px; }
+    .meta { font-size: 13px; color: #6b7280; }
+    .chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid #bbb; margin-left: 8px; }
+    .actions { display: flex; gap: 8px; }
+    .actions button { padding: 6px 10px; border-radius: 8px; }
+    .btn-warn { background: #d97706; }
+    .btn-danger { background: #dc2626; }
+    .empty { color: #6b7280; text-align: center; padding: 24px 0; border: 1px dashed #bbb; border-radius: 12px; }
+  </style>
 </head>
-<body class="bg-gray-100 p-6">
-  <div class="max-w-2xl mx-auto bg-white shadow-md rounded-lg p-6">
-    <h1 class="text-2xl font-bold mb-4">📅 Dorado Calendar</h1>
+<body>
+  <div class="container">
+    <h1>Dorado Calendar</h1>
 
     <!-- Add Event -->
-    <form id="eventForm" class="mb-6 grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2">
-      <input id="title" placeholder="Event title" class="border rounded p-2" required />
-      <input id="starts_at" type="datetime-local" class="border rounded p-2" required />
-      <button class="bg-blue-600 text-white px-4 py-2 rounded">Add</button>
+    <form id="eventForm" autocomplete="off">
+      <input id="title" placeholder="Event title" required />
+      <input id="starts_at" type="datetime-local" required />
+      <input id="category" placeholder="Category (e.g. work)" />
+      <button id="addBtn">Add</button>
     </form>
 
-    <!-- Filters -->
-    <div class="mb-4 grid grid-cols-1 sm:grid-cols-[auto_auto_auto_auto] gap-2 items-end">
-      <div>
-        <label class="block text-sm text-gray-700 mb-1">From (date)</label>
-        <input id="fromDate" type="date" class="border rounded p-2 w-full" />
-      </div>
-      <div>
-        <label class="block text-sm text-gray-700 mb-1">To (date)</label>
-        <input id="toDate" type="date" class="border rounded p-2 w-full" />
-      </div>
-      <div>
-        <label class="block text-sm text-gray-700 mb-1">Limit</label>
-        <select id="limit" class="border rounded p-2 w-full">
-          <option value="5">5</option>
-          <option value="10" selected>10</option>
-          <option value="20">20</option>
-          <option value="50">50</option>
-        </select>
-      </div>
-      <button id="applyFilters" class="bg-gray-800 text-white px-4 py-2 rounded">Apply</button>
+    <!-- Filters / Controls -->
+    <div class="controls">
+      <input id="search" placeholder="Search title…" />
+      <select id="sort">
+        <option value="starts_at">Sort: Start time</option>
+        <option value="title">Sort: Title</option>
+      </select>
+      <select id="filterCategory">
+        <option value="">All categories</option>
+        <option value="work">work</option>
+        <option value="personal">personal</option>
+        <option value="school">school</option>
+      </select>
     </div>
 
-    <!-- Alerts / Loading / List -->
-    <div id="alert" class="hidden mb-3 p-3 rounded text-sm"></div>
-    <div id="loading" class="text-gray-500 mb-2" style="display:none">Loading…</div>
-    <ul id="events" class="space-y-2"></ul>
+    <!-- Status / Loading -->
+    <div id="status" class="status"></div>
+
+    <!-- Events List -->
+    <ul id="events"></ul>
   </div>
 
-  <script>
-    const BASE = '/api/events';
-    const alertEl = document.getElementById('alert');
-    const eventsEl = document.getElementById('events');
-
-    function showAlert(msg, ok=false){
-      alertEl.textContent = msg;
-      alertEl.className = 'mb-3 p-3 rounded text-sm ' + (ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
-      alertEl.classList.remove('hidden');
-      setTimeout(() => alertEl.classList.add('hidden'), 2500);
-    }
-
-    function setLoading(on) {
-      const el = document.getElementById('loading');
-      if (el) el.style.display = on ? 'block' : 'none';
-    }
-
-    // Build query from filters (with cache-bust)
-    function buildQuery(){
-      const params = new URLSearchParams();
-      const from = document.getElementById('fromDate').value;
-      const to   = document.getElementById('toDate').value;
-      const limit = document.getElementById('limit').value || '10';
-
-      if (from) params.set('from', new Date(from + 'T00:00').toISOString());
-      if (to)   params.set('to',   new Date(to   + 'T23:59').toISOString());
-      if (limit) params.set('limit', limit);
-
-      params.set('ts', Date.now());
-      return params.toString();
-    }
-
-    async function loadEvents(){
-      setLoading(true);
-      eventsEl.innerHTML = '';
-      try {
-        const qs = buildQuery();
-        const res = await fetch(`${BASE}?${qs}`, { cache: 'no-store' });
-        if (!res.ok) throw new Error('Failed to load events');
-        const data = await res.json();
-
-        if (!Array.isArray(data) || data.length === 0) {
-          eventsEl.innerHTML = '<li class="text-gray-500">No events found.</li>';
-          return;
-        }
-
-        for (const ev of data){
-          const li = document.createElement('li');
-          li.className = "border p-3 rounded flex justify-between items-center";
-          li.innerHTML = `
-            <span>${ev.title} — ${new Date(ev.starts_at).toLocaleString()}</span>
-            <button class="bg-red-600 text-white px-2 py-1 rounded"
-              onclick="if (confirm('Delete this event?')) deleteEvent('${ev.id}')">
-              Delete
-            </button>
-          `;
-          eventsEl.appendChild(li);
-        }
-      } catch (err) {
-        console.error(err);
-        showAlert('Failed to load events');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    async function deleteEvent(id){
-      try {
-        const r = await fetch(`${BASE}/${id}`, { method: 'DELETE' });
-        if (!r.ok) throw new Error('Delete failed');
-        showAlert('Event deleted', true);
-        loadEvents();
-      } catch {
-        showAlert('Could not delete event');
-      }
-    }
-
-    // Add Event handler
-    document.getElementById('eventForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const title = document.getElementById('title').value.trim();
-      const raw = document.getElementById('starts_at').value;
-
-      if (!title) return showAlert('Title is required');
-      if (!raw)   return showAlert('Start time is required');
-
-      // Convert datetime-local -> ISO (API expects ISO)
-      const iso = new Date(raw).toISOString();
-
-      try {
-        const r = await fetch(BASE, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, starts_at: iso })
-        });
-        const body = await r.json().catch(()=>({}));
-        if (!r.ok) throw new Error(body.error || 'Create failed');
-
-        e.target.reset();
-        showAlert('Event added', true);
-        loadEvents();
-      } catch (err) {
-        showAlert(err.message || 'Failed to add event');
-      }
-    });
-
-    // Apply filters
-    document.getElementById('applyFilters').addEventListener('click', (e)=>{
-      e.preventDefault();
-      loadEvents();
-    });
-
-    // Initial load
-    loadEvents();
-  </script>
+  <script src="script.js"></script>
 </body>
 </html>
 

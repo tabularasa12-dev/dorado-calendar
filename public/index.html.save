@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Dorado Calendar</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 p-8">
+  <h1 class="text-2xl font-bold mb-4">Dorado Calendar</h1>
+
+  <!-- Form -->
+  <form id="eventForm" class="mb-6">
+    <input id="title" placeholder="Event title"
+      class="border p-2 mr-2 rounded" required />
+    <input id="starts_at" type="datetime-local"
+      class="border p-2 mr-2 rounded" required />
+    <button class="bg-blue-500 text-white px-4 py-2 rounded">Add Event</button>
+  </form>
+
+  <!-- List -->
+  <ul id="events" class="space-y-2"></ul>
+
+  <script>
+    const API = '/api/events';
+
+    async function loadEvents() {
+      const res = await fetch(API);
+      const data = await res.json();
+      const list = document.getElementById('events');
+      list.innerHTML = '';
+      data.forEach(ev => {
+        const li = document.createElement('li');
+        li.className = "bg-white p-3 rounded shadow flex justify-between items-center";
+        li.innerHTML = `
+          <span>${ev.title} — ${new Date(ev.starts_at).toLocaleString()}</span>
+          <button class="bg-red-500 text-white px-2 py-1 rounded" onclick="deleteEvent('${ev.id}')">Delete</button>
+        `;
+        list.appendChild(li);
+      });
+    }
+
+    async function deleteEvent(id) {
+      await fetch(API + '/' + id, { method: 'DELETE' });
+      loadEvents();
+    }
+
+    document.getElementById('eventForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = document.getElementById('title').value;
+      const starts_at = document.getElementById('starts_at').value;
+      await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, starts_at })
+      });
+      e.target.reset();
+      loadEvents();
+    });
+
+    loadEvents();
+  </script>
+</body>
+</html>
+
+
