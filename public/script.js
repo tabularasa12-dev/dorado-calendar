@@ -14,7 +14,7 @@ const els = {
 };
 
 function setStatus(msg, ok = false) {
-  els.status.textContent = msg || '';
+  els.status.innerHTML = msg ? (ok ? `<span class="ok">${msg}</span>` : `<span class="err">${msg}</span>`) : '';
   els.status.className = 'status ' + (msg ? (ok ? 'ok' : 'err') : '');
 }
 
@@ -22,7 +22,7 @@ function setLoading(isLoading, msg = 'Loading…') {
   els.addBtn.disabled = isLoading;
   if (isLoading) {
     els.addBtn.textContent = '…';
-    setStatus(msg);
+    setStatus(`<span class="spinner"></span> ${msg}`);
   } else {
     els.addBtn.textContent = 'Add';
     setStatus('');
@@ -32,7 +32,6 @@ function setLoading(isLoading, msg = 'Loading…') {
 function toLocalReadable(iso) {
   try {
     const d = new Date(iso);
-    // e.g., "Thu, Sep 25, 6:00 PM"
     return d.toLocaleString(undefined, {
       weekday: 'short',
       year: 'numeric',
@@ -46,15 +45,22 @@ function toLocalReadable(iso) {
   }
 }
 
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
 async function api(method, url, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(url, opts);
   let data = null;
   try { data = await r.json(); } catch {}
-  if (!r.ok) {
-    throw new Error((data && data.error) || `HTTP ${r.status}`);
-  }
+  if (!r.ok) throw new Error((data && data.error) || `HTTP ${r.status}`);
   return data;
 }
 
@@ -69,7 +75,7 @@ async function loadEvents() {
   if (cat) params.set('category', cat);
 
   els.list.innerHTML = '';
-  setStatus('Loading events…');
+  setStatus(`<span class="spinner"></span> Loading events…`);
 
   try {
     const events = await api('GET', `/api/events?${params.toString()}`);
@@ -92,19 +98,21 @@ function renderEvents(events) {
     li.dataset.id = ev.id;
 
     const left = document.createElement('div');
+    const catClass = (ev.category || 'general').toLowerCase();
     left.innerHTML = `
       <div><strong>${escapeHtml(ev.title)}</strong>
-        <span class="chip">${escapeHtml(ev.category || 'general')}</span>
+        <span class="chip ${escapeHtml(catClass)}">${escapeHtml(ev.category || 'general')}</span>
       </div>
       <div class="meta">${toLocalReadable(ev.starts_at)}</div>
     `;
 
     const actions = document.createElement('div');
     actions.className = 'actions';
+
     const editBtn = document.createElement('button');
     editBtn.className = 'btn-warn';
     editBtn.textContent = 'Edit';
-    editBtn.addEventListener('click', () => handleEdit(ev));
+    editBtn.addEventListener('click', () => openInlineEditor(ev));
 
     const delBtn = document.createElement('button');
     delBtn.className = 'btn-danger';
@@ -129,25 +137,56 @@ function renderEvents(events) {
   els.list.appendChild(frag);
 }
 
-function escapeHtml(s) {
-  return String(s ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
+function openInlineEditor(ev) {
+  const li = document.querySelector(`li[data-id="${ev.id}"]`);
+  if (!li) return;
+
+  const isoValue = new Date(ev.starts_at).toISOString().slice(0,16); // "YYYY-MM-DDTHH:MM"
+
+  li.innerHTML = `
+    <form class="editForm">
+      <input name="title" value="${escapeHtml(ev.title)}" required />
+      <input type="datetime-local" name="starts_at" value="${isoValue}" required />
+      <input name="category" value="${escapeHtml(ev.category || 'general')}" />
+      <button type="submit">Save</button>
+      <button type="button" class="btn-secondary cancelBtn">Cancel</button>
+    </form>
+  `;
+
+  const form = li.querySelector('.editForm');
+  const cancelBtn = li.querySelector('.cancelBtn');
+
+  cancelBtn.addEventListener('click', () => loadEvents());
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const title = form.title.value.trim();
+    const starts = form.starts_at.value;
+    const category = form.category.value.trim() || 'general';
+
+    if (!title || !starts) return setStatus('Title & time required');
+
+    const iso = new Date(starts).toISOString();
+
+    try {
+      await api('PATCH', `/api/events/${ev.id}`, { title, starts_at: iso, category });
+      setStatus('Event updated', true);
+      loadEvents();
+    } catch (err) {
+      setStatus(err.message || 'Update failed');
+    }
+  });
 }
 
-// -------- Add Event --------
+// -------- Create --------
 els.form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const title = els.title.value.trim();
-  const raw = els.startsAt.value;             // "YYYY-MM-DDTHH:mm" (local)
+  const raw = els.startsAt.value;
   const category = (els.category.value.trim() || 'general');
 
   if (!title || !raw) return setStatus('Title and start time are required');
 
-  // Convert local datetime-local value to ISO (UTC)
   const iso = new Date(raw).toISOString();
 
   try {
@@ -163,44 +202,7 @@ els.form.addEventListener('submit', async (e) => {
   }
 });
 
-// -------- Edit Event (prompt-based) --------
-async function handleEdit(ev) {
-  // Title
-  const newTitle = prompt('New title (leave blank to keep):', ev.title ?? '') ?? ev.title;
-  // Start time (accept e.g. "2025-10-12 18:30" or leave blank)
-  const newStartsRaw = prompt('New start datetime (YYYY-MM-DD HH:MM, blank to keep):', '') || '';
-  // Category
-  const newCategory = prompt('New category (blank to keep):', ev.category || 'general') ?? ev.category;
-
-  const payload = {};
-
-  if (newTitle && newTitle !== ev.title) payload.title = newTitle;
-
-  if (newStartsRaw.trim() !== '') {
-    const candidate = new Date(newStartsRaw.replace(' ', 'T'));
-    if (Number.isNaN(candidate.getTime())) {
-      return setStatus('Invalid date/time; not updated');
-    }
-    payload.starts_at = candidate.toISOString();
-  }
-
-  if (newCategory && newCategory !== ev.category) payload.category = newCategory;
-
-  if (Object.keys(payload).length === 0) {
-    return setStatus('Nothing changed');
-  }
-
-  try {
-    setStatus('Updating…');
-    await api('PATCH', `/api/events/${ev.id}`, payload);
-    setStatus('Event updated', true);
-    loadEvents();
-  } catch (e) {
-    setStatus(e.message || 'Update failed');
-  }
-}
-
-// -------- Filters: live update --------
+// -------- Filters --------
 let searchDebounce = null;
 els.search.addEventListener('input', () => {
   clearTimeout(searchDebounce);
