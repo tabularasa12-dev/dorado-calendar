@@ -6,27 +6,21 @@ const els = {
   startsAt: document.getElementById('starts_at'),
   category: document.getElementById('category'),
   addBtn: document.getElementById('addBtn'),
-  status: document.getElementById('status'),
   list: document.getElementById('events'),
   search: document.getElementById('search'),
   sort: document.getElementById('sort'),
   filterCategory: document.getElementById('filterCategory'),
+  toast: document.getElementById('toast'),
 };
 
-function setStatus(msg, ok = false) {
-  els.status.innerHTML = msg ? (ok ? `<span class="ok">${msg}</span>` : `<span class="err">${msg}</span>`) : '';
-  els.status.className = 'status ' + (msg ? (ok ? 'ok' : 'err') : '');
-}
-
-function setLoading(isLoading, msg = 'Loading…') {
-  els.addBtn.disabled = isLoading;
-  if (isLoading) {
-    els.addBtn.textContent = '…';
-    setStatus(`<span class="spinner"></span> ${msg}`);
-  } else {
-    els.addBtn.textContent = 'Add';
-    setStatus('');
-  }
+// ---- UI helpers ----
+function toast(msg, ok = true, ms = 2000) {
+  const t = els.toast;
+  t.textContent = msg;
+  t.style.background = ok ? '#16a34a' : '#dc2626';
+  t.style.display = 'block';
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(() => (t.style.display = 'none'), ms);
 }
 
 function toLocalReadable(iso) {
@@ -54,6 +48,7 @@ function escapeHtml(s) {
     .replaceAll("'", '&#039;');
 }
 
+// ---- API helper ----
 async function api(method, url, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
@@ -64,6 +59,7 @@ async function api(method, url, body) {
   return data;
 }
 
+// ---- Load / render ----
 async function loadEvents() {
   const params = new URLSearchParams();
   const q = els.search.value.trim();
@@ -74,18 +70,17 @@ async function loadEvents() {
   if (sort) params.set('sort', sort);
   if (cat) params.set('category', cat);
 
-  els.list.innerHTML = '';
-  setStatus(`<span class="spinner"></span> Loading events…`);
+  els.list.innerHTML = `<li class="empty"><span class="spinner"></span> Loading events…</li>`;
 
   try {
     const events = await api('GET', `/api/events?${params.toString()}`);
     renderEvents(events);
+    refreshCategoryFilter(events);
     if (events.length === 0) {
       els.list.innerHTML = `<li class="empty">No events found.</li>`;
     }
-    setStatus('');
   } catch (e) {
-    setStatus(e.message || 'Failed to load', false);
+    els.list.innerHTML = `<li class="empty">Failed to load: ${escapeHtml(e.message || 'error')}</li>`;
   }
 }
 
@@ -121,10 +116,10 @@ function renderEvents(events) {
       if (!confirm('Delete this event?')) return;
       try {
         await api('DELETE', `/api/events/${ev.id}`);
-        setStatus('Event deleted', true);
+        toast('Event deleted');
         loadEvents();
       } catch (e) {
-        setStatus(e.message || 'Delete failed');
+        toast(e.message || 'Delete failed', false);
       }
     });
 
@@ -137,11 +132,20 @@ function renderEvents(events) {
   els.list.appendChild(frag);
 }
 
+function refreshCategoryFilter(events) {
+  const sel = els.filterCategory;
+  const current = sel.value;
+  const cats = Array.from(new Set(events.map(e => (e.category || 'general')))).sort();
+  sel.innerHTML = `<option value="">All categories</option>` + cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  if ([...sel.options].some(o => o.value === current)) sel.value = current;
+}
+
+// ---- Inline editor ----
 function openInlineEditor(ev) {
   const li = document.querySelector(`li[data-id="${ev.id}"]`);
   if (!li) return;
 
-  const isoValue = new Date(ev.starts_at).toISOString().slice(0,16); // "YYYY-MM-DDTHH:MM"
+  const isoValue = new Date(ev.starts_at).toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
 
   li.innerHTML = `
     <form class="editForm">
@@ -164,45 +168,53 @@ function openInlineEditor(ev) {
     const starts = form.starts_at.value;
     const category = form.category.value.trim() || 'general';
 
-    if (!title || !starts) return setStatus('Title & time required');
+    if (!title || !starts) {
+      toast('Title & time required', false);
+      return;
+    }
 
     const iso = new Date(starts).toISOString();
 
     try {
       await api('PATCH', `/api/events/${ev.id}`, { title, starts_at: iso, category });
-      setStatus('Event updated', true);
+      toast('Event updated');
       loadEvents();
     } catch (err) {
-      setStatus(err.message || 'Update failed');
+      toast(err.message || 'Update failed', false);
     }
   });
 }
 
-// -------- Create --------
+// ---- Create ----
 els.form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const title = els.title.value.trim();
   const raw = els.startsAt.value;
   const category = (els.category.value.trim() || 'general');
 
-  if (!title || !raw) return setStatus('Title and start time are required');
+  if (!title || !raw) {
+    toast('Title and start time are required', false);
+    return;
+  }
 
   const iso = new Date(raw).toISOString();
 
   try {
-    setLoading(true, 'Adding…');
+    els.addBtn.disabled = true;
+    els.addBtn.textContent = '…';
     await api('POST', '/api/events', { title, starts_at: iso, category });
     els.form.reset();
-    setStatus('Event added', true);
+    toast('Event added');
     loadEvents();
   } catch (e2) {
-    setStatus(e2.message || 'Create failed');
+    toast(e2.message || 'Create failed', false);
   } finally {
-    setLoading(false);
+    els.addBtn.disabled = false;
+    els.addBtn.textContent = 'Add';
   }
 });
 
-// -------- Filters --------
+// ---- Filters ----
 let searchDebounce = null;
 els.search.addEventListener('input', () => {
   clearTimeout(searchDebounce);
