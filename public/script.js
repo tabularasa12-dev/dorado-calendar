@@ -1,228 +1,132 @@
-// public/script.js
+// script.js
 
-const els = {
-  form: document.getElementById('eventForm'),
-  title: document.getElementById('title'),
-  startsAt: document.getElementById('starts_at'),
-  category: document.getElementById('category'),
-  addBtn: document.getElementById('addBtn'),
-  list: document.getElementById('events'),
-  search: document.getElementById('search'),
-  sort: document.getElementById('sort'),
-  filterCategory: document.getElementById('filterCategory'),
-  toast: document.getElementById('toast'),
-};
-
-// ---- UI helpers ----
-function toast(msg, ok = true, ms = 2000) {
-  const t = els.toast;
-  t.textContent = msg;
-  t.style.background = ok ? '#16a34a' : '#dc2626';
-  t.style.display = 'block';
-  clearTimeout(window.__toastTimer);
-  window.__toastTimer = setTimeout(() => (t.style.display = 'none'), ms);
-}
-
-function toLocalReadable(iso) {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString(undefined, {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: '2-digit',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-  } catch {
-    return iso;
-  }
-}
-
-function escapeHtml(s) {
-  return String(s ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-}
-
-// ---- API helper ----
-async function api(method, url, body) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  if (body) opts.body = JSON.stringify(body);
-  const r = await fetch(url, opts);
-  let data = null;
-  try { data = await r.json(); } catch {}
-  if (!r.ok) throw new Error((data && data.error) || `HTTP ${r.status}`);
-  return data;
-}
-
-// ---- Load / render ----
 async function loadEvents() {
+  const q = document.getElementById('search').value.trim();
+  const category = document.getElementById('filterCategory').value;
   const params = new URLSearchParams();
-  const q = els.search.value.trim();
-  const sort = els.sort.value;
-  const cat = els.filterCategory.value.trim();
+  if (q) params.append('q', q);
+  if (category) params.append('category', category);
 
-  if (q) params.set('q', q);
-  if (sort) params.set('sort', sort);
-  if (cat) params.set('category', cat);
+  const r = await fetch('/api/events?' + params.toString());
+  const events = await r.json().catch(() => []);
+  const list = document.getElementById('events');
+  list.innerHTML = '';
 
-  els.list.innerHTML = `<li class="empty"><span class="spinner"></span> Loading events…</li>`;
-
-  try {
-    const events = await api('GET', `/api/events?${params.toString()}`);
-    renderEvents(events);
-    refreshCategoryFilter(events);
-    if (events.length === 0) {
-      els.list.innerHTML = `<li class="empty">No events found.</li>`;
-    }
-  } catch (e) {
-    els.list.innerHTML = `<li class="empty">Failed to load: ${escapeHtml(e.message || 'error')}</li>`;
-  }
-}
-
-function renderEvents(events) {
-  const frag = document.createDocumentFragment();
-
-  events.forEach(ev => {
-    const li = document.createElement('li');
-    li.className = 'event';
-    li.dataset.id = ev.id;
-
-    const left = document.createElement('div');
-    const catClass = (ev.category || 'general').toLowerCase();
-    left.innerHTML = `
-      <div><strong>${escapeHtml(ev.title)}</strong>
-        <span class="chip ${escapeHtml(catClass)}">${escapeHtml(ev.category || 'general')}</span>
-      </div>
-      <div class="meta">${toLocalReadable(ev.starts_at)}</div>
-    `;
-
-    const actions = document.createElement('div');
-    actions.className = 'actions';
-
-    const editBtn = document.createElement('button');
-    editBtn.className = 'btn-warn';
-    editBtn.textContent = 'Edit';
-    editBtn.addEventListener('click', () => openInlineEditor(ev));
-
-    const delBtn = document.createElement('button');
-    delBtn.className = 'btn-danger';
-    delBtn.textContent = 'Delete';
-    delBtn.addEventListener('click', async () => {
-      if (!confirm('Delete this event?')) return;
-      try {
-        await api('DELETE', `/api/events/${ev.id}`);
-        toast('Event deleted');
-        loadEvents();
-      } catch (e) {
-        toast(e.message || 'Delete failed', false);
-      }
-    });
-
-    actions.append(editBtn, delBtn);
-    li.append(left, actions);
-    frag.appendChild(li);
-  });
-
-  els.list.innerHTML = '';
-  els.list.appendChild(frag);
-}
-
-function refreshCategoryFilter(events) {
-  const sel = els.filterCategory;
-  const current = sel.value;
-  const cats = Array.from(new Set(events.map(e => (e.category || 'general')))).sort();
-  sel.innerHTML = `<option value="">All categories</option>` + cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
-  if ([...sel.options].some(o => o.value === current)) sel.value = current;
-}
-
-// ---- Inline editor ----
-function openInlineEditor(ev) {
-  const li = document.querySelector(`li[data-id="${ev.id}"]`);
-  if (!li) return;
-
-  const isoValue = new Date(ev.starts_at).toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
-
-  li.innerHTML = `
-    <form class="editForm">
-      <input name="title" value="${escapeHtml(ev.title)}" required />
-      <input type="datetime-local" name="starts_at" value="${isoValue}" required />
-      <input name="category" value="${escapeHtml(ev.category || 'general')}" />
-      <button type="submit">Save</button>
-      <button type="button" class="btn-secondary cancelBtn">Cancel</button>
-    </form>
-  `;
-
-  const form = li.querySelector('.editForm');
-  const cancelBtn = li.querySelector('.cancelBtn');
-
-  cancelBtn.addEventListener('click', () => loadEvents());
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const title = form.title.value.trim();
-    const starts = form.starts_at.value;
-    const category = form.category.value.trim() || 'general';
-
-    if (!title || !starts) {
-      toast('Title & time required', false);
-      return;
-    }
-
-    const iso = new Date(starts).toISOString();
-
-    try {
-      await api('PATCH', `/api/events/${ev.id}`, { title, starts_at: iso, category });
-      toast('Event updated');
-      loadEvents();
-    } catch (err) {
-      toast(err.message || 'Update failed', false);
-    }
-  });
-}
-
-// ---- Create ----
-els.form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const title = els.title.value.trim();
-  const raw = els.startsAt.value;
-  const category = (els.category.value.trim() || 'general');
-
-  if (!title || !raw) {
-    toast('Title and start time are required', false);
+  if (!Array.isArray(events) || events.length === 0) {
+    list.innerHTML = `<li class="text-gray-500">No events found</li>`;
     return;
   }
 
+  // Build category filter dynamically
+  const filterSelect = document.getElementById('filterCategory');
+  const cats = Array.from(new Set(events.map(ev => ev.category || 'general')));
+  filterSelect.innerHTML = `<option value="">All categories</option>` +
+    cats.map(c => `<option value="${c}">${c}</option>`).join('');
+
+  events.forEach(ev => {
+    const li = document.createElement('li');
+    li.className = "flex justify-between items-start bg-white p-3 rounded shadow";
+
+    li.innerHTML = `
+      <div>
+        <strong>${ev.title}</strong>
+        <span class="text-gray-500">[${ev.category || 'general'}]</span>
+        — ${new Date(ev.starts_at).toLocaleString()}
+        ${ev.repeat && ev.repeat !== 'none' ? `<span class="ml-2 text-sm bg-purple-200 text-purple-800 px-2 py-0.5 rounded">${ev.repeat}</span>` : ''}
+        ${ev.description ? `<div class="text-gray-700 text-sm mt-1">${ev.description}</div>` : ''}
+      </div>
+      <div class="space-x-2">
+        <button class="bg-amber-600 text-white px-2 py-1 rounded"
+          onclick="editEvent('${ev.id}', ${JSON.stringify(ev)})">
+          Edit
+        </button>
+        <button class="bg-red-600 text-white px-2 py-1 rounded"
+          onclick="if (confirm('Delete this event?')) deleteEvent('${ev.id}')">
+          Delete
+        </button>
+      </div>
+    `;
+
+    list.appendChild(li);
+  });
+}
+
+// Add Event
+document.getElementById('eventForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const title = document.getElementById('title').value.trim();
+  const raw = document.getElementById('starts_at').value;
+  const category = document.getElementById('category').value.trim() || 'general';
+  const description = document.getElementById('description').value.trim();
+  const repeat = document.getElementById('repeat').value;
+
+  if (!title || !raw) return showToast('Title and start time are required', false);
+
   const iso = new Date(raw).toISOString();
 
-  try {
-    els.addBtn.disabled = true;
-    els.addBtn.textContent = '…';
-    await api('POST', '/api/events', { title, starts_at: iso, category });
-    els.form.reset();
-    toast('Event added');
-    loadEvents();
-  } catch (e2) {
-    toast(e2.message || 'Create failed', false);
-  } finally {
-    els.addBtn.disabled = false;
-    els.addBtn.textContent = 'Add';
-  }
+  const r = await fetch('/api/events', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, starts_at: iso, category, description, repeat })
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) return showToast(body.error || 'Create failed', false);
+  e.target.reset();
+  showToast('Event added', true);
+  loadEvents();
 });
 
-// ---- Filters ----
-let searchDebounce = null;
-els.search.addEventListener('input', () => {
-  clearTimeout(searchDebounce);
-  searchDebounce = setTimeout(loadEvents, 250);
-});
-els.sort.addEventListener('change', loadEvents);
-els.filterCategory.addEventListener('change', loadEvents);
+// Edit Event
+async function editEvent(id, ev) {
+  const title = prompt('New title (blank=keep)', ev.title || '') ?? ev.title;
+  const startsRaw = prompt('New start datetime (YYYY-MM-DD HH:MM, blank=keep)', '') || '';
+  const category = prompt('New category (blank=keep)', ev.category || 'general') ?? ev.category;
+  const description = prompt('New description (blank=keep)', ev.description || '') ?? ev.description;
+  const repeat = prompt('New repeat (none/daily/weekly/monthly, blank=keep)', ev.repeat || 'none') ?? ev.repeat;
+
+  const payload = {};
+  if (title && title !== ev.title) payload.title = title;
+  if (startsRaw.trim() !== '') {
+    const candidate = new Date(startsRaw.replace(' ', 'T'));
+    if (Number.isNaN(candidate.getTime())) return showToast('Invalid date/time; not updated', false);
+    payload.starts_at = candidate.toISOString();
+  }
+  if (category && category !== ev.category) payload.category = category;
+  if (description && description !== ev.description) payload.description = description;
+  if (repeat && repeat !== ev.repeat) payload.repeat = repeat;
+
+  if (Object.keys(payload).length === 0) return showToast('Nothing changed', false);
+
+  const r = await fetch('/api/events/' + id, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) return showToast(body.error || 'Update failed', false);
+  showToast('Event updated', true);
+  loadEvents();
+}
+
+// Delete Event
+async function deleteEvent(id) {
+  const r = await fetch('/api/events/' + id, { method: 'DELETE' });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) return showToast(body.error || 'Delete failed', false);
+  showToast('Event deleted', true);
+  loadEvents();
+}
+
+// Toast notifications
+function showToast(msg, success = true) {
+  const container = document.getElementById('toast-container');
+  const div = document.createElement('div');
+  div.className = `px-4 py-2 rounded shadow text-white ${success ? 'bg-green-600' : 'bg-red-600'}`;
+  div.textContent = msg;
+  container.appendChild(div);
+  setTimeout(() => div.remove(), success ? 2000 : 5000);
+}
 
 // Initial load
-loadEvents();
+window.addEventListener('DOMContentLoaded', loadEvents);
 

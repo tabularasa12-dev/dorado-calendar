@@ -2,93 +2,42 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Dorado Calendar</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
-    .container { max-width: 900px; margin: 0 auto; padding: 20px; }
-    h1 { margin: 0 0 16px; }
-    form, .controls { display: grid; gap: 8px; }
-    form { grid-template-columns: 1fr 220px 180px auto; align-items: center; }
-    @media (max-width: 800px) { form { grid-template-columns: 1fr 1fr 1fr; } form button { grid-column: 1 / -1; } }
-    input, select, button { padding: 10px; font-size: 14px; }
-    input, select { border: 1px solid #bbb; border-radius: 8px; background: inherit; }
-    button { border: 0; border-radius: 10px; background: #2563eb; color: white; cursor: pointer; }
-    button:disabled { opacity: .5; cursor: not-allowed; }
-    .controls { grid-template-columns: 1fr 200px 180px; margin-top: 16px; align-items: center; }
-    @media (max-width: 800px) { .controls { grid-template-columns: 1fr 1fr; } }
-    ul#events { list-style: none; padding: 0; margin: 16px 0; display: grid; gap: 8px; }
-    li.event { display: flex; justify-content: space-between; align-items: center; border: 1px solid #ddd; border-radius: 12px; padding: 10px 12px; }
-    .meta { font-size: 13px; color: #6b7280; }
-    .chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid transparent; margin-left: 8px; }
-    .chip.general { background:#e5e7eb; border-color:#9ca3af; color:#111827; }
-    .chip.work    { background:#bfdbfe; border-color:#3b82f6; color:#1e3a8a; }
-    .chip.personal{ background:#d1fae5; border-color:#10b981; color:#065f46; }
-    .chip.school  { background:#fef3c7; border-color:#f59e0b; color:#92400e; }
-    .actions { display: flex; gap: 8px; }
-    .actions button { padding: 6px 10px; border-radius: 8px; }
-    .btn-warn { background: #d97706; }
-    .btn-danger { background: #dc2626; }
-    .empty { color: #6b7280; text-align: center; padding: 24px 0; border: 1px dashed #bbb; border-radius: 12px; }
-    .spinner { display:inline-block; width:1em; height:1em; border:2px solid #bbb; border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite; vertical-align:middle; }
-    @keyframes spin { to { transform: rotate(360deg);} }
-    .editForm { display:grid; grid-template-columns: 1fr 220px 180px auto auto; gap:8px; align-items:center; width:100%; }
-    .btn-secondary { background:#6b7280; }
-
-    /* Toast */
-    #toast {
-      position: fixed;
-      right: 16px;
-      bottom: 16px;
-      display: none;
-      padding: 10px 14px;
-      border-radius: 10px;
-      background: #111;
-      color: #fff;
-      opacity: 0.95;
-      font-size: 14px;
-      min-width: 180px;
-      text-align: center;
-      z-index: 1000;
-    }
-  </style>
+  <script src="script.js" defer></script>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-  <div class="container">
-    <h1>Dorado Calendar</h1>
+<body class="bg-gray-100 p-6">
+  <h1 class="text-2xl font-bold mb-4">📅 Dorado Calendar</h1>
 
-    <!-- Add Event -->
-    <form id="eventForm" autocomplete="off">
-      <input id="title" placeholder="Event title" required />
-      <input id="starts_at" type="datetime-local" required />
-      <input id="category" placeholder="Category (e.g. work)" />
-      <button id="addBtn">Add</button>
-    </form>
+  <!-- Status/Toast container -->
+  <div id="toast-container" class="fixed bottom-4 right-4 space-y-2 z-50"></div>
 
-    <!-- Filters / Controls -->
-    <div class="controls">
-      <input id="search" placeholder="Search title…" />
-      <select id="sort">
-        <option value="starts_at">Sort: Start time</option>
-        <option value="title">Sort: Title</option>
-      </select>
-      <select id="filterCategory">
-        <option value="">All categories</option>
-        <option value="work">work</option>
-        <option value="personal">personal</option>
-        <option value="school">school</option>
-      </select>
-    </div>
+  <!-- Add Event Form -->
+  <form id="eventForm" class="mb-6 grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto_auto_auto] gap-2 bg-white p-4 rounded shadow">
+    <input id="title" placeholder="Event title" class="border rounded p-2" required />
+    <input id="starts_at" type="datetime-local" class="border rounded p-2" required />
+    <input id="category" placeholder="Category (e.g. work)" class="border rounded p-2" />
+    <textarea id="description" placeholder="Description" class="border rounded p-2"></textarea>
+    <select id="repeat" class="border rounded p-2">
+      <option value="none">No repeat</option>
+      <option value="daily">Daily</option>
+      <option value="weekly">Weekly</option>
+      <option value="monthly">Monthly</option>
+    </select>
+    <button class="bg-blue-600 text-white px-4 py-2 rounded">Add</button>
+  </form>
 
-    <!-- Events List -->
-    <ul id="events"></ul>
+  <!-- Filters -->
+  <div class="mb-4 flex flex-wrap gap-2 items-center">
+    <input id="search" placeholder="Search..." class="border rounded p-2" />
+    <select id="filterCategory" class="border rounded p-2">
+      <option value="">All categories</option>
+    </select>
+    <button onclick="loadEvents()" class="bg-gray-600 text-white px-3 py-2 rounded">Apply</button>
   </div>
 
-  <!-- Toast container -->
-  <div id="toast"></div>
-
-  <script src="script.js"></script>
+  <!-- Event List -->
+  <ul id="events" class="space-y-2"></ul>
 </body>
 </html>
 
