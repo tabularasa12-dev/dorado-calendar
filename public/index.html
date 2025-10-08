@@ -2,42 +2,43 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dorado Calendar</title>
-  <script src="script.js" defer></script>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="style.css" />
 </head>
-<body class="bg-gray-100 p-6">
-  <h1 class="text-2xl font-bold mb-4">📅 Dorado Calendar</h1>
+<body>
+  <div class="container">
+    <h1>📅 Dorado Calendar</h1>
 
-  <!-- Status/Toast container -->
-  <div id="toast-container" class="fixed bottom-4 right-4 space-y-2 z-50"></div>
+    <!-- Controls -->
+    <div class="toolbar">
+      <button id="toggle-filter" data-mode="upcoming">Showing: Upcoming</button>
+      <div class="legend">
+        <span class="dot category-school"></span> School
+        <span class="dot category-activities"></span> Activities
+        <span class="dot category-personal"></span> Personal
+      </div>
+    </div>
 
-  <!-- Add Event Form -->
-  <form id="eventForm" class="mb-6 grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto_auto_auto] gap-2 bg-white p-4 rounded shadow">
-    <input id="title" placeholder="Event title" class="border rounded p-2" required />
-    <input id="starts_at" type="datetime-local" class="border rounded p-2" required />
-    <input id="category" placeholder="Category (e.g. work)" class="border rounded p-2" />
-    <textarea id="description" placeholder="Description" class="border rounded p-2"></textarea>
-    <select id="repeat" class="border rounded p-2">
-      <option value="none">No repeat</option>
-      <option value="daily">Daily</option>
-      <option value="weekly">Weekly</option>
-      <option value="monthly">Monthly</option>
-    </select>
-    <button class="bg-blue-600 text-white px-4 py-2 rounded">Add</button>
-  </form>
+    <!-- Event Form -->
+    <form id="event-form">
+      <input type="text" id="title" name="title" placeholder="Event Title" required />
+      <input type="date" id="date" name="date" required />
+      <select id="category" name="category" required>
+        <option value="" disabled selected>Select Category</option>
+        <option value="School">School</option>
+        <option value="Activities">Activities</option>
+        <option value="Personal">Personal</option>
+      </select>
+      <button type="submit">Add Event</button>
+    </form>
 
-  <!-- Filters -->
-  <div class="mb-4 flex flex-wrap gap-2 items-center">
-    <input id="search" placeholder="Search..." class="border rounded p-2" />
-    <select id="filterCategory" class="border rounded p-2">
-      <option value="">All categories</option>
-    </select>
-    <button onclick="loadEvents()" class="bg-gray-600 text-white px-3 py-2 rounded">Apply</button>
+    <!-- Event List -->
+    <div id="events"></div>
+    <p id="no-events" style="display:none;">No events found.</p>
   </div>
 
-  <!-- Event List -->
-  <ul id="events" class="space-y-2"></ul>
+  <script src="script.js"></script>
 </body>
 </html>
 
