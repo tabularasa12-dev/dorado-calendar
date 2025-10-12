@@ -1,81 +1,76 @@
-// ===== Dorado Calendar minimal backend (file-based) =====
-const express = require("express");
-const fs = require("fs");
-const path = require("path");
+const express = require('express');
+const path = require('path');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
-
-const DATA_DIR = path.join(__dirname, "data");
-const DATA_FILE = path.join(DATA_DIR, "events.json");
-
-function ensureStore() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
-}
-ensureStore();
-
-function readEvents() {
-  try { return JSON.parse(fs.readFileSync(DATA_FILE, "utf-8")); }
-  catch { return []; }
-}
-function writeEvents(arr) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(arr, null, 2));
-}
-
-// GET all events
-app.get("/events", (req, res) => res.json(readEvents()));
-
-// POST new event { title, date, category }
-app.post("/events", (req, res) => {
-  const { title, date, category } = req.body || {};
-  if (!title || !date || !category) {
-    return res.status(400).json({ error: "Missing title, date, or category" });
-  }
-  const ev = {
-    id: String(Date.now()) + Math.random().toString(36).slice(2, 8),
-    title, date, category
-  };
-  const events = readEvents();
-  events.push(ev);
-  writeEvents(events);
-  res.status(201).json(ev);
+// log every request so we can see what's happening
+app.use((req, res, next) => {
+  console.log(new Date().toISOString(), req.method, req.url);
+  next();
 });
 
-// PUT update event by id { title?, date?, category? }
-app.put("/events/:id", (req, res) => {
-  const id = String(req.params.id);
-  const { title, date, category } = req.body || {};
-  const events = readEvents();
-  const idx = events.findIndex(e => String(e.id) === id);
-  if (idx === -1) return res.status(404).json({ error: "Not found" });
+// parse JSON for API
+app.use(express.json());
 
-  const cur = events[idx];
-  events[idx] = {
-    ...cur,
-    title: title ?? cur.title,
-    date: date ?? cur.date,
-    category: category ?? cur.category,
-  };
-  writeEvents(events);
+// serve static files from /public with no-cache (avoid stale assets)
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: false,
+  lastModified: false,
+  setHeaders: (res) => {
+    res.set('Cache-Control', 'no-store');
+  }
+}));
+
+// In-memory events store (simple)
+let events = [];
+
+// API: list events
+app.get('/events', (req, res) => {
+  res.json(events);
+});
+
+// API: create event
+app.post('/events', (req, res) => {
+  const { title, start, end, category, repeat } = req.body || {};
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+  const ev = { id, title, start, end, category, repeat: repeat || { type: 'none' } };
+  events.push(ev);
+  res.json(ev);
+});
+
+// API: update by id
+app.put('/events/:id', (req, res) => {
+  const { id } = req.params;
+  const idx = events.findIndex(e => e.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  events[idx] = { ...events[idx], ...req.body };
   res.json(events[idx]);
 });
 
-// DELETE
-app.delete("/events/:id", (req, res) => {
-  const id = String(req.params.id);
-  const events = readEvents();
-  const idx = events.findIndex(e => String(e.id) === id);
-  if (idx === -1) return res.status(404).json({ error: "Not found" });
-  const [deleted] = events.splice(idx, 1);
-  writeEvents(events);
-  res.json({ ok: true, deleted });
+// API: delete by id
+app.delete('/events/:id', (req, res) => {
+  const { id } = req.params;
+  const before = events.length;
+  events = events.filter(e => e.id !== id);
+  res.json({ ok: true, deleted: before - events.length });
 });
 
+// API: delete ALL
+app.delete('/events', (req, res) => {
+  const n = events.length;
+  events.length = 0;
+  res.json({ ok: true, cleared: n });
+});
+
+// Fallback: serve index.html for "/"
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// (Optional) Fallback for unknown routes to avoid blank responses:
+app.use((req, res) => res.status(404).send('Not found'));
+
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Dorado Calendar server running on http://localhost:${PORT}`);
+  console.log(`🚀 Dorado Calendar running at http://localhost:${PORT}`);
 });
-
