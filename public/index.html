@@ -33,7 +33,7 @@
       <div id="time-body"></div>
     </div>
 
-    <!-- Days area: dates (header) sit directly above the 24h grid -->
+    <!-- Days area: dates header directly above the 24h grid -->
     <section class="days">
       <div class="days-head" id="days-head"></div>
       <div class="days-wrap" id="days-wrap"></div>
@@ -43,8 +43,10 @@
   <!-- Modal -->
   <div id="modal" class="modal" aria-hidden="true">
     <div id="modal-backdrop" class="modal-backdrop"></div>
-    <div class="modal-dialog">
+    <div class="modal-dialog" id="modal-dialog">
+      <div class="modal-accent" id="modal-accent"></div>
       <h2><span id="modal-title-text">Add Event</span></h2>
+
       <form id="modal-form">
         <label>Name</label>
         <input id="modal-title" type="text" placeholder="Event name" required />
@@ -61,16 +63,22 @@
         </div>
 
         <label>Category</label>
-        <select id="modal-category">
-          <option>School</option>
-          <option>Activities</option>
-          <option>Personal</option>
-        </select>
+        <div class="cat-group" id="modal-category-group" role="radiogroup" aria-label="Category">
+          <label class="cat-pill cat-school">
+            <input type="radio" name="modal-cat" value="School"> School
+          </label>
+          <label class="cat-pill cat-activities">
+            <input type="radio" name="modal-cat" value="Activities"> Activities
+          </label>
+          <label class="cat-pill cat-personal">
+            <input type="radio" name="modal-cat" value="Personal"> Personal
+          </label>
+        </div>
 
         <div class="actions">
-          <button type="submit">Save</button>
-          <button type="button" id="modal-delete" style="display:none">Delete</button>
-          <button type="button" id="modal-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="modal-save">Save</button>
+          <button type="button" class="btn btn-danger" id="modal-delete" style="display:none">Delete</button>
+          <button type="button" class="btn" id="modal-cancel">Cancel</button>
         </div>
       </form>
     </div>

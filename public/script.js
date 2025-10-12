@@ -1,7 +1,5 @@
-// Dorado Calendar — stable week view with per-day fragments,
-// Overlap: longest full; 2nd = 75% @ 25%; 3rd = 50% @ 50%; 4+ equal columns
-// No UTC midnight jumps (local strings), pointer-capture drag/resize,
-// shorter events on top, and modal always above grid.
+// Dorado Calendar — stable week view, overlap roles, local time writes,
+// modal above grid with colored category pills & primary/danger buttons.
 
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const HOUR_PX = 40;
@@ -12,7 +10,7 @@ const EV_GAP_PX = 6;
 const pad2 = n => String(n).padStart(2,"0");
 const hhmm = d => new Date(d).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
 
-// Local helpers (avoid ISO/UTC)
+// Local helpers (avoid ISO/UTC issues)
 function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
 function startOfWeekLocal(d){ const x=new Date(d); x.setHours(0,0,0,0); x.setDate(x.getDate()-x.getDay()); return x; }
 function endOfWeekLocal(d){ const s=startOfWeekLocal(d); const e=new Date(s); e.setDate(e.getDate()+7); return e; }
@@ -26,7 +24,7 @@ let currentWeekStart = startOfWeekLocal(new Date());
 let events = [];
 let justDragged = false;
 
-/* --- Frame --- */
+/* ===== Frame ===== */
 function renderWeekHeader(ws){
   const head = document.getElementById("days-head");
   head.innerHTML = "";
@@ -76,10 +74,35 @@ function renderWeek(){
   renderDayBodies(currentWeekStart);
 }
 
-/* --- Modal --- */
+/* ===== Modal ===== */
 const modal = document.getElementById("modal");
 const form  = document.getElementById("modal-form");
+const modalDialog = document.getElementById("modal-dialog");
+const modalAccent = document.getElementById("modal-accent");
 let editingId = null;
+
+function getSelectedCategory(){
+  const r = document.querySelector('input[name="modal-cat"]:checked');
+  return r ? r.value : "Personal";
+}
+function setSelectedCategory(cat){
+  const sel = document.querySelector(`input[name="modal-cat"][value="${cat}"]`);
+  (sel || document.querySelector('input[name="modal-cat"][value="Personal"]')).checked = true;
+  updateModalAccent(cat);
+}
+function updateModalAccent(cat){
+  let color = getCategoryColor(cat);
+  modalAccent.style.background = color;
+}
+
+function getCategoryColor(cat){
+  switch((cat||"").toLowerCase()){
+    case "school": return getComputedStyle(document.documentElement).getPropertyValue('--school') || '#1e88e5';
+    case "activities": return getComputedStyle(document.documentElement).getPropertyValue('--activities') || '#e53935';
+    case "personal": return getComputedStyle(document.documentElement).getPropertyValue('--personal') || '#43a047';
+    default: return '#888';
+  }
+}
 
 function openModal(event, dateKey){
   if (justDragged){ justDragged = false; return; }
@@ -93,7 +116,7 @@ function openModal(event, dateKey){
     document.getElementById("modal-title").value   = event.title;
     document.getElementById("modal-start").value   = event.start;
     document.getElementById("modal-end").value     = event.end;
-    document.getElementById("modal-category").value= event.category;
+    setSelectedCategory(event.category);
     document.getElementById("modal-delete").style.display = "inline-block";
   }else{
     editingId = null;
@@ -103,7 +126,7 @@ function openModal(event, dateKey){
     document.getElementById("modal-title").value   = "";
     document.getElementById("modal-start").value   = start;
     document.getElementById("modal-end").value     = end;
-    document.getElementById("modal-category").value= "Personal";
+    setSelectedCategory("Personal");
     document.getElementById("modal-delete").style.display = "none";
   }
 }
@@ -120,12 +143,18 @@ document.getElementById("modal-delete").onclick = ()=>{
   closeModal();
   renderEvents();
 };
+
+// update accent when user picks a category pill
+document.getElementById("modal-category-group").addEventListener("change", ()=>{
+  updateModalAccent(getSelectedCategory());
+});
+
 form.onsubmit = (e)=>{
   e.preventDefault();
   const title    = document.getElementById("modal-title").value.trim();
   const start    = document.getElementById("modal-start").value;
   const end      = document.getElementById("modal-end").value;
-  const category = document.getElementById("modal-category").value;
+  const category = getSelectedCategory();
   if(!title) return;
   if(new Date(end) <= new Date(start)){ alert("End must be after start"); return; }
 
@@ -140,7 +169,7 @@ form.onsubmit = (e)=>{
   renderEvents();
 };
 
-/* --- Fragments --- */
+/* ===== Per-day fragments ===== */
 function fragmentsForDay(dayKey, allEvents){
   const dayStart = fromKey(dayKey), dayEnd = addDays(dayStart,1);
   const out = [];
@@ -155,12 +184,12 @@ function fragmentsForDay(dayKey, allEvents){
   return out;
 }
 
-/* --- Overlap roles (primary, secondary1, secondary2, then equal) --- */
+/* ===== Overlap roles: primary/full, secondary1 75%@25%, secondary2 50%@50%, 4+ equal ===== */
 function clusterRolesUpTo3(frags){
   const sorted = [...frags].sort((a,b)=>{
     if(a.startMin !== b.startMin) return a.startMin - b.startMin;
     const da=a.endMin-a.startMin, db=b.endMin-b.startMin;
-    return db - da; // longest first for stability
+    return db - da; // longest first
   });
   const clusters=[]; let cur=null;
   for(const fr of sorted){
@@ -187,7 +216,7 @@ function clusterRolesUpTo3(frags){
   return map;
 }
 
-/* --- Build event block --- */
+/* ===== Build event block ===== */
 function buildBlockFromFragment(fr, dayKey, roleRec){
   const duration = fr.endMin - fr.startMin;
   const heightPx = Math.max(6, duration * MINUTE_PX);
@@ -262,7 +291,7 @@ function renderEvents(){
   });
 }
 
-/* --- Compact sizing --- */
+/* ===== Compact sizing ===== */
 function applyCompactMode(block){
   const h = block.getBoundingClientRect().height;
   block.classList.remove("compact","tiny","very-short","micro");
@@ -272,7 +301,7 @@ function applyCompactMode(block){
   else if (h <= 30) block.classList.add("compact");
 }
 
-/* --- Drag / Resize (pointer capture, local strings so no midnight jumps) --- */
+/* ===== Drag / Resize (pointer capture + local writes) ===== */
 function startDragMoveFragment(fr, block, dayKey, pDown){
   const startY = pDown.clientY;
   const initTopPx = parseFloat(block.style.top) || 0;
@@ -403,9 +432,10 @@ function startResizeFragment(fr, block, fixedDayKey, edge, pDown){
   document.addEventListener("pointerup",   onUp);
 }
 
-/* --- Boot --- */
+/* ===== Boot ===== */
 document.addEventListener("DOMContentLoaded", ()=>{
   renderWeek();
+
   const prev = document.getElementById("prev-week");
   const next = document.getElementById("next-week");
   const today= document.getElementById("today");
