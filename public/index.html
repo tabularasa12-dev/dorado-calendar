@@ -1,77 +1,82 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Dorado Calendar — Week View</title>
-  <link rel="stylesheet" href="style.css?v=restore1" />
-  <script src="script.js?v=restore1" defer></script>
-  <meta name="color-scheme" content="light dark" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dorado Calendar</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="container">
-    <div class="toolbar">
-      <div class="left">
-        <button id="prev-week">◀ Prev</button>
-        <button id="today">Today</button>
-        <button id="next-week">Next ▶</button>
-      </div>
-      <div class="center"><h1 id="week-label">Week</h1></div>
-      <div class="right"><button id="theme-toggle">🌙 Dark</button></div>
+  <header>
+    <div id="controls">
+      <button id="prev-week">◀ Prev</button>
+      <button id="today">Today</button>
+      <button id="next-week">Next ▶</button>
     </div>
+    <h1 id="week-label">Loading…</h1>
+    <div>
+      <button id="theme-toggle">🌙 Dark</button>
+    </div>
+  </header>
 
-    <div class="legend">
-      <span class="dot category-school"></span> School
-      <span class="dot category-activities"></span> Activities
-      <span class="dot category-personal"></span> Personal
-    </div>
-
-    <!-- Top dates row -->
-    <div class="week-head">
-      <div class="time-head-spacer" aria-hidden="true">Time</div>
-      <div class="days-head" id="days-head"></div>
-    </div>
-
-    <!-- Grid (time col + 7 day cols) -->
-    <div class="week-grid">
-      <div class="time-col"><div class="time-body" id="time-body"></div></div>
-      <div class="days-wrap" id="days-wrap"></div>
-    </div>
+  <!-- Legend ABOVE the calendar -->
+  <div class="legend-bar">
+    <div class="legend-item"><span class="legend-color legend-school"></span> School</div>
+    <div class="legend-item"><span class="legend-color legend-activities"></span> Activities</div>
+    <div class="legend-item"><span class="legend-color legend-personal"></span> Personal</div>
   </div>
 
-  <!-- Add/Edit/Delete modal -->
+  <main>
+    <!-- Time column -->
+    <div class="time-col">
+      <div class="time-head-spacer">Time</div>
+      <div id="time-body"></div>
+    </div>
+
+    <!-- Days area: dates (header) sit directly above the 24h grid -->
+    <section class="days">
+      <div class="days-head" id="days-head"></div>
+      <div class="days-wrap" id="days-wrap"></div>
+    </section>
+  </main>
+
+  <!-- Modal -->
   <div id="modal" class="modal" aria-hidden="true">
-    <div class="modal-backdrop" id="modal-backdrop"></div>
-    <div class="modal-dialog" role="dialog" aria-modal="true">
-      <h3 id="modal-title-text">Add Event</h3>
-      <form id="modal-form" novalidate>
-        <label>Title
-          <input type="text" id="modal-title" required />
-        </label>
-        <div class="row-2" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <label>Start
-            <input type="datetime-local" id="modal-start" required />
-          </label>
-          <label>End
-            <input type="datetime-local" id="modal-end" required />
-          </label>
+    <div id="modal-backdrop" class="modal-backdrop"></div>
+    <div class="modal-dialog">
+      <h2><span id="modal-title-text">Add Event</span></h2>
+      <form id="modal-form">
+        <label>Name</label>
+        <input id="modal-title" type="text" placeholder="Event name" required />
+
+        <div class="row">
+          <div>
+            <label>Start</label>
+            <input id="modal-start" type="datetime-local" required />
+          </div>
+          <div>
+            <label>End</label>
+            <input id="modal-end" type="datetime-local" required />
+          </div>
         </div>
-        <label>Category
-          <select id="modal-category">
-            <option value="School">School</option>
-            <option value="Activities">Activities</option>
-            <option value="Personal">Personal</option>
-          </select>
-        </label>
-        <div class="modal-actions">
-          <button type="button" id="modal-delete" class="danger">Delete</button>
-          <span class="spacer"></span>
+
+        <label>Category</label>
+        <select id="modal-category">
+          <option>School</option>
+          <option>Activities</option>
+          <option>Personal</option>
+        </select>
+
+        <div class="actions">
+          <button type="submit">Save</button>
+          <button type="button" id="modal-delete" style="display:none">Delete</button>
           <button type="button" id="modal-cancel">Cancel</button>
-          <button type="submit" id="modal-save" class="primary">Save</button>
         </div>
       </form>
     </div>
   </div>
+
+  <script src="script.js"></script>
 </body>
 </html>
 

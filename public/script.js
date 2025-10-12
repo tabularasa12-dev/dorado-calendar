@@ -1,26 +1,32 @@
-// Dorado Calendar — week view with drag/move, resize (top/bottom), compact sizing, and modal add/edit
+// Dorado Calendar — stable week view with per-day fragments,
+// Overlap: longest full; 2nd = 75% @ 25%; 3rd = 50% @ 50%; 4+ equal columns
+// No UTC midnight jumps (local strings), pointer-capture drag/resize,
+// shorter events on top, and modal always above grid.
 
-/* ===== Constants & helpers ===== */
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-const HOUR_PX = 40;                  // must match --hour-h in CSS
+const HOUR_PX = 40;
 const MINUTE_PX = HOUR_PX / 60;
 const SNAP_MIN = 15;
+const EV_GAP_PX = 6;
 
 const pad2 = n => String(n).padStart(2,"0");
 const hhmm = d => new Date(d).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
 
+// Local helpers (avoid ISO/UTC)
 function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
 function startOfWeekLocal(d){ const x=new Date(d); x.setHours(0,0,0,0); x.setDate(x.getDate()-x.getDay()); return x; }
 function endOfWeekLocal(d){ const s=startOfWeekLocal(d); const e=new Date(s); e.setDate(e.getDate()+7); return e; }
 function dateKeyLocal(d){ const x=new Date(d); x.setHours(0,0,0,0); return `${x.getFullYear()}-${pad2(x.getMonth()+1)}-${pad2(x.getDate())}`; }
+function fromKey(key){ return new Date(`${key}T00:00`); }
 function localStr(key,mins){ const h=Math.floor(mins/60), m=mins%60; return `${key}T${pad2(h)}:${pad2(m)}`; }
 
-/* ===== State ===== */
+function zForDuration(mins){ return 1000 + Math.max(1, 1440 - Math.min(1440, Math.round(mins))); }
+
 let currentWeekStart = startOfWeekLocal(new Date());
-let events = [];               // in-memory for now
+let events = [];
 let justDragged = false;
 
-/* ===== Week header, time column, day columns ===== */
+/* --- Frame --- */
 function renderWeekHeader(ws){
   const head = document.getElementById("days-head");
   head.innerHTML = "";
@@ -34,10 +40,8 @@ function renderWeekHeader(ws){
     head.appendChild(cell);
   }
 }
-
 function renderTimeCol(){
-  const t = document.getElementById("time-body");
-  t.innerHTML = "";
+  const t = document.getElementById("time-body"); t.innerHTML="";
   for(let h=0; h<24; h++){
     const row = document.createElement("div");
     row.className = "tick";
@@ -46,29 +50,23 @@ function renderTimeCol(){
     t.appendChild(row);
   }
 }
-
 function renderDayBodies(ws){
-  const wrap = document.getElementById("days-wrap");
-  wrap.innerHTML = "";
+  const wrap = document.getElementById("days-wrap"); wrap.innerHTML="";
   for(let i=0;i<7;i++){
     const key = dateKeyLocal(addDays(ws,i));
     const body = document.createElement("div");
     body.className = "day-body";
     body.dataset.date = key;
 
-    // hour grid overlay so lines are always visible
     const grid = document.createElement("div");
     grid.className = "hour-grid";
     body.appendChild(grid);
 
-    // click empty space to add
     body.addEventListener("click",()=>openModal(null, key));
     wrap.appendChild(body);
   }
-
   renderEvents();
 }
-
 function renderWeek(){
   const we = endOfWeekLocal(currentWeekStart);
   document.getElementById("week-label").textContent =
@@ -78,7 +76,7 @@ function renderWeek(){
   renderDayBodies(currentWeekStart);
 }
 
-/* ===== Modal: add / edit / delete ===== */
+/* --- Modal --- */
 const modal = document.getElementById("modal");
 const form  = document.getElementById("modal-form");
 let editingId = null;
@@ -87,6 +85,7 @@ function openModal(event, dateKey){
   if (justDragged){ justDragged = false; return; }
   modal.style.display = "grid";
   modal.setAttribute("aria-hidden","false");
+  document.body.classList.add("modal-open");
   document.getElementById("modal-title-text").textContent = event ? "Edit Event" : "Add Event";
 
   if(event){
@@ -108,7 +107,12 @@ function openModal(event, dateKey){
     document.getElementById("modal-delete").style.display = "none";
   }
 }
-function closeModal(){ modal.style.display = "none"; modal.setAttribute("aria-hidden","true"); form.reset(); }
+function closeModal(){
+  modal.style.display = "none";
+  modal.setAttribute("aria-hidden","true");
+  document.body.classList.remove("modal-open");
+  form.reset();
+}
 document.getElementById("modal-cancel").onclick = ()=>closeModal();
 document.getElementById("modal-backdrop").onclick = ()=>closeModal();
 document.getElementById("modal-delete").onclick = ()=>{
@@ -136,214 +140,284 @@ form.onsubmit = (e)=>{
   renderEvents();
 };
 
-/* ===== Event rendering with compact modes ===== */
-function buildBlock(e, columnKey){
-  const s = new Date(e.start), en = new Date(e.end);
-  const minutes  = s.getHours()*60 + s.getMinutes();
-  const duration = Math.max(5, (en - s)/60000);       // allow very short events
+/* --- Fragments --- */
+function fragmentsForDay(dayKey, allEvents){
+  const dayStart = fromKey(dayKey), dayEnd = addDays(dayStart,1);
+  const out = [];
+  for(const ev of allEvents){
+    const s = new Date(ev.start), e = new Date(ev.end);
+    if(e <= dayStart || s >= dayEnd) continue;
+    const startMin = Math.max(0, Math.floor((Math.max(s,dayStart) - dayStart)/60000));
+    const endMin   = Math.min(24*60, Math.ceil((Math.min(e,dayEnd)   - dayStart)/60000));
+    if(endMin <= startMin) continue;
+    out.push({ ev, id: ev.id, startMin, endMin });
+  }
+  return out;
+}
+
+/* --- Overlap roles (primary, secondary1, secondary2, then equal) --- */
+function clusterRolesUpTo3(frags){
+  const sorted = [...frags].sort((a,b)=>{
+    if(a.startMin !== b.startMin) return a.startMin - b.startMin;
+    const da=a.endMin-a.startMin, db=b.endMin-b.startMin;
+    return db - da; // longest first for stability
+  });
+  const clusters=[]; let cur=null;
+  for(const fr of sorted){
+    if(!cur || fr.startMin >= cur.maxEnd){ cur={items:[],maxEnd:fr.endMin}; clusters.push(cur); }
+    cur.items.push(fr); if(fr.endMin>cur.maxEnd) cur.maxEnd=fr.endMin;
+  }
+  const map=new Map();
+  for(const cl of clusters){
+    const items = cl.items.slice().sort((a,b)=>{
+      const da=a.endMin-a.startMin, db=b.endMin-b.startMin;
+      if(da!==db) return db-da;
+      if(a.startMin!==b.startMin) return a.startMin-b.startMin;
+      return a.id.localeCompare(b.id);
+    });
+    if(items.length===1){ map.set(items[0].id+":"+items[0].startMin,{role:"primary"}); continue; }
+    map.set(items[0].id+":"+items[0].startMin,{role:"primary"});
+    if(items[1]) map.set(items[1].id+":"+items[1].startMin,{role:"secondary1"});
+    if(items[2]) map.set(items[2].id+":"+items[2].startMin,{role:"secondary2"});
+    if(items.length>3){
+      const others=items.slice(3), cols=others.length;
+      others.forEach((fr,i)=>map.set(fr.id+":"+fr.startMin,{role:"equal",col:i,cols}));
+    }
+  }
+  return map;
+}
+
+/* --- Build event block --- */
+function buildBlockFromFragment(fr, dayKey, roleRec){
+  const duration = fr.endMin - fr.startMin;
   const heightPx = Math.max(6, duration * MINUTE_PX);
 
   const block = document.createElement("div");
-  block.className = `event-block category-${e.category.toLowerCase()}`;
-  block.style.top    = `${minutes*MINUTE_PX}px`;
+  block.className = `event-block category-${fr.ev.category.toLowerCase()}`;
+  block.style.top    = `${fr.startMin*MINUTE_PX}px`;
   block.style.height = `${heightPx}px`;
-  block.title = `${e.title}\n${hhmm(s)} – ${hhmm(en)}`;   // tooltip for micro
+  block.dataset.id   = fr.ev.id;
+  block.dataset.day  = dayKey;
+  block.dataset.startMin = fr.startMin;
+  block.dataset.endMin   = fr.endMin;
+  block.style.zIndex = String(zForDuration(duration)); // shorter on top
 
-  // content wrapper (clips text like spreadsheet cells)
-  const content = document.createElement("div");
-  content.className = "content";
+  const setLW = (leftPct, widthPct)=>{
+    block.style.left  = `calc(${leftPct}% + ${EV_GAP_PX}px)`;
+    block.style.width = `calc(${widthPct}% - ${EV_GAP_PX*2}px)`;
+    block.style.right = "auto";
+  };
 
-  const titleEl = document.createElement("div");
-  titleEl.className = "title";
-  titleEl.textContent = e.title;
+  if(!roleRec || roleRec.role==="primary"){
+    block.style.left  = `${EV_GAP_PX}px`;
+    block.style.right = `${EV_GAP_PX}px`;
+    block.style.width = "";
+  } else if(roleRec.role==="secondary1"){
+    setLW(25,75);
+  } else if(roleRec.role==="secondary2"){
+    setLW(50,50);
+  } else if(roleRec.role==="equal"){
+    const widthPct = 100/roleRec.cols;
+    const leftPct  = widthPct*roleRec.col;
+    setLW(leftPct,widthPct);
+  }
 
-  const timeEl = document.createElement("div");
-  timeEl.className = "time";
-  timeEl.textContent = `${hhmm(s)} – ${hhmm(en)}`;
+  const fragStart = new Date(localStr(dayKey, fr.startMin));
+  const fragEnd   = new Date(localStr(dayKey, fr.endMin));
+  const content = document.createElement("div"); content.className="content";
+  const titleEl = document.createElement("div"); titleEl.className="title"; titleEl.textContent = fr.ev.title;
+  const timeEl  = document.createElement("div"); timeEl.className="time";  timeEl.textContent  = `${hhmm(fragStart)} – ${hhmm(fragEnd)}`;
+  content.append(titleEl,timeEl);
 
-  content.append(titleEl, timeEl);
-
-  // resize handles
-  const rt = document.createElement("div"); rt.className = "resize-top";
-  const rb = document.createElement("div"); rb.className = "resize-bottom";
-
+  const rt = document.createElement("div"); rt.className="resize-top";
+  const rb = document.createElement("div"); rb.className="resize-bottom";
   block.append(content, rt, rb);
 
-  applyCompactMode(block);                         // initial pass
-  const ro = new ResizeObserver(()=>applyCompactMode(block));
-  ro.observe(block);                               // re-evaluate on size changes
+  applyCompactMode(block);
+  new ResizeObserver(()=>applyCompactMode(block)).observe(block);
 
-  // click to edit
-  block.addEventListener("click", ev => {
-    ev.stopPropagation();
-    if(!justDragged) openModal(e, columnKey);
-  });
-
-  // drag move (ignore if grabbing resize handles)
-  block.addEventListener("mousedown", ev => {
+  block.addEventListener("click", ev => { ev.stopPropagation(); if(!justDragged) openModal(fr.ev, dayKey); });
+  block.addEventListener("pointerdown", ev => {
     const tgt = ev.target;
     if(tgt.classList.contains("resize-top") || tgt.classList.contains("resize-bottom")) return;
     ev.preventDefault(); ev.stopPropagation();
-    startDragMove(e, block, columnKey, ev);
+    startDragMoveFragment(fr, block, dayKey, ev);
   });
-
-  // resize
-  rt.addEventListener("mousedown", ev => { ev.preventDefault(); ev.stopPropagation(); startResize(e, block, columnKey, "top", ev); });
-  rb.addEventListener("mousedown", ev => { ev.preventDefault(); ev.stopPropagation(); startResize(e, block, columnKey, "bottom", ev); });
+  rt.addEventListener("pointerdown", ev => { ev.preventDefault(); ev.stopPropagation(); startResizeFragment(fr, block, dayKey, "top", ev); });
+  rb.addEventListener("pointerdown", ev => { ev.preventDefault(); ev.stopPropagation(); startResizeFragment(fr, block, dayKey, "bottom", ev); });
 
   return block;
 }
 
-/* ===== Compact sizing thresholds (FIXED) =====
-   30 min ≈ 20px -> .tiny
-   15 min ≈ 10px -> .very-short
-   ≤ 8px         -> .micro (no text)
-*/
-function applyCompactMode(block){
-  const h = block.getBoundingClientRect().height;
-
-  block.classList.remove("compact","tiny","very-short","micro");
-
-  if (h <= 8){
-    block.classList.add("micro");
-  } else if (h <= 12){
-    block.classList.add("very-short");
-  } else if (h <= 22){
-    block.classList.add("tiny");
-  } else if (h <= 30){
-    block.classList.add("compact");
-  }
-}
-
 function renderEvents(){
-  document.querySelectorAll(".event-block").forEach(n => n.remove());
+  document.querySelectorAll(".event-block").forEach(n=>n.remove());
   document.querySelectorAll(".day-body").forEach(b=>{
-    const key = b.dataset.date;
-    const list = events.filter(ev => ev.start.startsWith(key));
-    list.forEach(ev => b.appendChild(buildBlock(ev, key)));
+    const dayKey = b.dataset.date;
+    const frags = fragmentsForDay(dayKey, events);
+    const roles = clusterRolesUpTo3(frags);
+    for(const fr of frags){
+      const rec = roles.get(fr.id + ":" + fr.startMin);
+      b.appendChild(buildBlockFromFragment(fr, dayKey, rec));
+    }
   });
 }
 
-/* ===== Drag to move (across days, with live label) ===== */
-function startDragMove(e, block, columnKey, mDown){
-  const startY = mDown.clientY;
-  const initTopPx = parseFloat(block.style.top) || 0;
-  const durMin = Math.max(5, Math.round(parseFloat(block.style.height) / MINUTE_PX));
-  const maxTop = (24*60) - durMin;
+/* --- Compact sizing --- */
+function applyCompactMode(block){
+  const h = block.getBoundingClientRect().height;
+  block.classList.remove("compact","tiny","very-short","micro");
+  if (h <= 8) block.classList.add("micro");
+  else if (h <= 12) block.classList.add("very-short");
+  else if (h <= 22) block.classList.add("tiny");
+  else if (h <= 30) block.classList.add("compact");
+}
 
+/* --- Drag / Resize (pointer capture, local strings so no midnight jumps) --- */
+function startDragMoveFragment(fr, block, dayKey, pDown){
+  const startY = pDown.clientY;
+  const initTopPx = parseFloat(block.style.top) || 0;
+  const fragDurMin = fr.endMin - fr.startMin;
   let targetBody = block.closest(".day-body");
-  let moved = false;
+  let moved=false;
 
-  function under(x,y){
-    const el = document.elementFromPoint(x,y);
-    return el ? (el.closest(".day-body") || targetBody) : targetBody;
-  }
+  const originalZ = block.style.zIndex;
+  block.style.zIndex = "9999";
+  block.setPointerCapture(pDown.pointerId);
+  document.body.style.userSelect = "none";
+  document.body.style.cursor = "grabbing";
 
-  function onMove(ev){
+  let raf=null;
+  const onMove = (ev)=>{
     const dy = ev.clientY - startY;
-    const propMin = Math.round((initTopPx + dy) / MINUTE_PX);
-    const snapped = Math.round(propMin / SNAP_MIN) * SNAP_MIN;
-    const clamped = Math.max(0, Math.min(maxTop, snapped));
-    block.style.top = `${clamped*MINUTE_PX}px`;
+    if(!raf){
+      raf=requestAnimationFrame(()=>{
+        const propMin = Math.round((initTopPx + dy)/MINUTE_PX);
+        const snapped = Math.round(propMin/SNAP_MIN)*SNAP_MIN;
+        const clamped = Math.max(0, Math.min(24*60 - fragDurMin, snapped));
+        block.style.top = `${clamped*MINUTE_PX}px`;
 
-    const u = under(ev.clientX, ev.clientY);
-    if(u && u !== targetBody){ targetBody = u; targetBody.appendChild(block); }
+        const el = document.elementFromPoint(ev.clientX, ev.clientY);
+        const u = el ? (el.closest(".day-body") || targetBody) : targetBody;
+        if(u && u!==targetBody){ targetBody=u; targetBody.appendChild(block); }
 
-    moved = true; justDragged = true;
+        moved=true; justDragged=true;
 
-    // live label update
-    const s = new Date(localStr(targetBody.dataset.date, clamped));
-    const en = new Date(localStr(targetBody.dataset.date, clamped + durMin));
-    const t = block.querySelector(".time");
-    if(t) t.textContent = `${hhmm(s)} – ${hhmm(en)}`;
+        const s = new Date(localStr(targetBody.dataset.date, clamped));
+        const en= new Date(localStr(targetBody.dataset.date, clamped+fragDurMin));
+        const t = block.querySelector(".time"); if(t) t.textContent = `${hhmm(s)} – ${hhmm(en)}`;
 
-    applyCompactMode(block);
-  }
-
-  function onUp(){
-    document.removeEventListener("mousemove", onMove);
-    document.removeEventListener("mouseup",   onUp);
-    if(!moved){ justDragged = false; return; }
-
-    const topMin = Math.round((parseFloat(block.style.top)||0) / MINUTE_PX);
-    e.start = localStr(targetBody.dataset.date, topMin);
-    e.end   = localStr(targetBody.dataset.date, topMin + durMin);
-
-    setTimeout(()=>{ justDragged = false; }, 120);
-    renderEvents();
-  }
-
-  document.addEventListener("mousemove", onMove);
-  document.addEventListener("mouseup",   onUp);
-}
-
-/* ===== Resize (top/bottom) with live label ===== */
-function startResize(e, block, columnKey, edge, mDown){
-  const startY = mDown.clientY;
-  const initTopPx = parseFloat(block.style.top) || 0;
-  const initHpx = parseFloat(block.style.height) || (60*MINUTE_PX);
-  const initTopMin = Math.round(initTopPx / MINUTE_PX);
-  const initDurMin = Math.max(5, Math.round(initHpx / MINUTE_PX));
-
-  let curTop = initTopMin, curDur = initDurMin;
-
-  function onMove(ev){
-    const dy = ev.clientY - startY;
-
-    if(edge === "top"){
-      const nextTop = initTopMin + Math.round(dy / MINUTE_PX);
-      const snappedTop = Math.round(nextTop / SNAP_MIN) * SNAP_MIN;
-      const boundedTop = Math.max(0, Math.min(initTopMin + initDurMin - 5, snappedTop));
-      curTop = boundedTop;
-      curDur = Math.max(5, initDurMin - (curTop - initTopMin));
-      block.style.top    = `${curTop*MINUTE_PX}px`;
-      block.style.height = `${curDur*MINUTE_PX}px`;
-    }else{
-      const nextDur = initDurMin + Math.round(dy / MINUTE_PX);
-      const snappedDur = Math.round(nextDur / SNAP_MIN) * SNAP_MIN;
-      const maxDur = (24*60) - initTopMin;
-      curDur = Math.max(5, Math.min(maxDur, snappedDur));
-      block.style.height = `${curDur*MINUTE_PX}px`;
+        applyCompactMode(block);
+        raf=null;
+      });
     }
+  };
+  const onUp = ()=>{
+    block.releasePointerCapture(pDown.pointerId);
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup",   onUp);
+    document.body.style.userSelect=""; document.body.style.cursor="";
 
-    // live label + compacting
-    const s = new Date(localStr(columnKey, curTop));
-    const en = new Date(localStr(columnKey, curTop + curDur));
-    const t = block.querySelector(".time"); if(t) t.textContent = `${hhmm(s)} – ${hhmm(en)}`;
-    applyCompactMode(block);
-    justDragged = true;
-  }
+    if(!moved){ block.style.zIndex=originalZ; justDragged=false; return; }
 
-  function onUp(){
-    document.removeEventListener("mousemove", onMove);
-    document.removeEventListener("mouseup",   onUp);
-    e.start = localStr(columnKey, curTop);
-    e.end   = localStr(columnKey, curTop + curDur);
-    setTimeout(()=>{ justDragged = false; }, 120);
+    const newTopMin = Math.round((parseFloat(block.style.top)||0)/MINUTE_PX);
+    const ev = fr.ev;
+    const duration = (new Date(ev.end) - new Date(ev.start))/60000;
+    ev.start = localStr(targetBody.dataset.date, newTopMin);
+    ev.end   = localStr(targetBody.dataset.date, newTopMin + duration);
+
+    block.style.zIndex = String(zForDuration(duration));
+    setTimeout(()=>{ justDragged=false; },120);
     renderEvents();
-  }
+  };
 
-  document.addEventListener("mousemove", onMove);
-  document.addEventListener("mouseup",   onUp);
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup",   onUp);
 }
 
-/* ===== Boot ===== */
+function startResizeFragment(fr, block, fixedDayKey, edge, pDown){
+  const startY = pDown.clientY;
+  const initTopPx = parseFloat(block.style.top) || 0;
+  const initHpx   = parseFloat(block.style.height) || (60*MINUTE_PX);
+  const initTopMin= Math.round(initTopPx/MINUTE_PX);
+  const initDurMin= Math.max(5, Math.round(initHpx/MINUTE_PX));
+  let curTop=initTopMin, curDur=initDurMin;
+
+  const originalZ = block.style.zIndex;
+  block.style.zIndex = "9999";
+  block.setPointerCapture(pDown.pointerId);
+  document.body.style.userSelect="none";
+  document.body.style.cursor="ns-resize";
+
+  let raf=null;
+  const onMove = (ev)=>{
+    const dy = ev.clientY - startY;
+    if(!raf){
+      raf=requestAnimationFrame(()=>{
+        if(edge==="top"){
+          const nextTop = initTopMin + Math.round(dy/MINUTE_PX);
+          const snappedTop = Math.round(nextTop/SNAP_MIN)*SNAP_MIN;
+          const boundedTop = Math.max(0, Math.min(initTopMin+initDurMin-5, snappedTop));
+          curTop=boundedTop;
+          curDur=Math.max(5, initDurMin-(curTop-initTopMin));
+          block.style.top = `${curTop*MINUTE_PX}px`;
+          block.style.height = `${curDur*MINUTE_PX}px`;
+        }else{
+          const nextDur = initDurMin + Math.round(dy/MINUTE_PX);
+          const snappedDur = Math.round(nextDur/SNAP_MIN)*SNAP_MIN;
+          const maxDur=(24*60)-initTopMin;
+          curDur=Math.max(5, Math.min(maxDur, snappedDur));
+          block.style.height = `${curDur*MINUTE_PX}px`;
+        }
+        const s=new Date(localStr(fixedDayKey, curTop));
+        const en=new Date(localStr(fixedDayKey, curTop+curDur));
+        const t=block.querySelector(".time"); if(t) t.textContent = `${hhmm(s)} – ${hhmm(en)}`;
+        applyCompactMode(block);
+        justDragged=true;
+        raf=null;
+      });
+    }
+  };
+  const onUp = ()=>{
+    block.releasePointerCapture(pDown.pointerId);
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup",   onUp);
+    document.body.style.userSelect=""; document.body.style.cursor="";
+
+    const ev = fr.ev;
+    if(edge==="top"){
+      const newStart = localStr(fixedDayKey, curTop);
+      ev.start = newStart;
+      if(new Date(ev.end) <= new Date(newStart)) ev.end = localStr(fixedDayKey, curTop+5);
+    }else{
+      const newEnd = localStr(fixedDayKey, curTop+curDur);
+      ev.end = newEnd;
+      if(new Date(newEnd) <= new Date(ev.start)) ev.start = localStr(fixedDayKey, curTop+curDur-5);
+    }
+    const newDur = (new Date(ev.end)-new Date(ev.start))/60000;
+    block.style.zIndex = String(zForDuration(newDur));
+    setTimeout(()=>{ justDragged=false; },120);
+    renderEvents();
+  };
+
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup",   onUp);
+}
+
+/* --- Boot --- */
 document.addEventListener("DOMContentLoaded", ()=>{
   renderWeek();
-
   const prev = document.getElementById("prev-week");
   const next = document.getElementById("next-week");
-  const today = document.getElementById("today");
+  const today= document.getElementById("today");
   if(prev) prev.onclick = ()=>{ currentWeekStart = addDays(currentWeekStart,-7); renderWeek(); };
   if(next) next.onclick = ()=>{ currentWeekStart = addDays(currentWeekStart, 7); renderWeek(); };
-  if(today) today.onclick = ()=>{ currentWeekStart = startOfWeekLocal(new Date()); renderWeek(); };
+  if(today) today.onclick= ()=>{ currentWeekStart = startOfWeekLocal(new Date()); renderWeek(); };
 
-  // optional theme toggle if you have a button with id="theme-toggle"
   const btn = document.getElementById("theme-toggle");
   if(btn){
     btn.addEventListener("click", ()=>{
-      const html = document.documentElement;
-      const next = html.getAttribute("data-theme")==="dark" ? "light" : "dark";
+      const html=document.documentElement;
+      const next= html.getAttribute("data-theme")==="dark" ? "light" : "dark";
       html.setAttribute("data-theme", next);
       btn.textContent = next==="dark" ? "☀️ Light" : "🌙 Dark";
     });
