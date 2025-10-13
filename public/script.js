@@ -1,6 +1,5 @@
 // Dorado Calendar — repeats (future-only) + drag/resize + edit/delete scope
-// Scope confirm: on repeating events, choose "This instance only" or "This and future".
-// Instance-only edits are "detached": we create a one-off event and skip the original occurrence.
+// Defaults: new events start with Category = School. Header nav buttons are CSS-only.
 
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const HOUR_PX = 40;
@@ -24,11 +23,10 @@ function dateKeyLocal(d){ const x=new Date(d); x.setHours(0,0,0,0); return `${x.
 function fromKey(key){ return new Date(`${key}T00:00`); }
 function localStr(key,mins){ const h=Math.floor(mins/60), m=mins%60; return `${key}T${pad2(h)}:${pad2(m)}`; }
 
-function minutes(dt){ const d=new Date(dt); return d.getHours()*60 + d.getMinutes(); }
 function zForDuration(mins){ return 1000 + Math.max(1, 1440 - Math.min(1440, Math.round(mins))); }
 
 let currentWeekStart = startOfWeekLocal(new Date());
-let events = [];                 // base events, may have repeat/exDates/until
+let events = [];                 // base events; supports repeat/exDates/until
 let justDragged = false;
 
 /* ========= Repeat helpers ========= */
@@ -74,17 +72,6 @@ function* expandRepeats(ev, rangeStart, rangeEnd){
   const until = ev.until ? new Date(ev.until) : null;
   const ex = new Set(ev.exDates || []); // ISO strings of instance starts
 
-  const yieldIfInRange = (cur)=>{
-    if(until && cur >= until) return false;
-    const end = new Date(cur.getTime()+durMs);
-    const key = cur.toISOString();
-    if(ex.has(key)) return true; // skip
-    if(end > rangeStart && cur < rangeEnd) {
-      return { start: new Date(cur), end };
-    }
-    return true;
-  };
-
   switch((ev.repeat||"none")){
     case "none": {
       if(baseStart >= minStart && baseEnd > rangeStart && baseStart < rangeEnd){
@@ -97,7 +84,8 @@ function* expandRepeats(ev, rangeStart, rangeEnd){
       while (cur < minStart) cur = addDays(cur,1);
       while (cur < rangeEnd){
         if(until && cur >= until) break;
-        if(!ex.has(cur.toISOString())){
+        const key = cur.toISOString();
+        if(!ex.has(key)){
           const end = new Date(cur.getTime()+durMs);
           if(end > rangeStart) yield { start: new Date(cur), end };
         }
@@ -110,7 +98,8 @@ function* expandRepeats(ev, rangeStart, rangeEnd){
       while (cur < minStart) cur = addWeeks(cur,1);
       while (cur < rangeEnd){
         if(until && cur >= until) break;
-        if(!ex.has(cur.toISOString())){
+        const key = cur.toISOString();
+        if(!ex.has(key)){
           const end = new Date(cur.getTime()+durMs);
           if(end > rangeStart) yield { start: new Date(cur), end };
         }
@@ -123,7 +112,8 @@ function* expandRepeats(ev, rangeStart, rangeEnd){
       while (cur < minStart){ cur = addMonths(cur,1); }
       while (cur < rangeEnd){
         if(until && cur >= until) break;
-        if(!ex.has(cur.toISOString())){
+        const key = cur.toISOString();
+        if(!ex.has(key)){
           const end = new Date(cur.getTime()+durMs);
           if(end > rangeStart) yield { start: new Date(cur), end };
         }
@@ -161,7 +151,8 @@ function* expandRepeats(ev, rangeStart, rangeEnd){
       while (cur < minStart) cur = addYears(cur,1);
       while (cur < rangeEnd){
         if(until && cur >= until) break;
-        if(!ex.has(cur.toISOString())){
+        const key = cur.toISOString();
+        if(!ex.has(key)){
           const end = new Date(cur.getTime()+durMs);
           if(end > rangeStart) yield { start: new Date(cur), end };
         }
@@ -230,11 +221,11 @@ let editingMeta = null; // { baseId, instanceISO|null, isRepeating, originalStar
 
 function getSelectedCategory(){
   const r = document.querySelector('input[name="modal-cat"]:checked');
-  return r ? r.value : "Personal";
+  return r ? r.value : "School"; // default
 }
 function setSelectedCategory(cat){
   const sel = document.querySelector(`input[name="modal-cat"][value="${cat}"]`);
-  (sel || document.querySelector('input[name="modal-cat"][value="Personal"]')).checked = true;
+  (sel || document.querySelector('input[name="modal-cat"][value="School"]')).checked = true;
   updateModalAccent(cat);
 }
 function updateModalAccent(cat){
@@ -265,8 +256,7 @@ function refreshRepeatLabels(){
   }
 }
 
-/* Open modal for create or edit.
-   - For edit of an instance: meta carries baseId + instanceISO and repeat flag. */
+/* Open modal for create or edit */
 function openModal(instanceOrNull, dateKey){
   if (justDragged){ justDragged = false; return; }
   modal.style.display = "grid";
@@ -274,9 +264,9 @@ function openModal(instanceOrNull, dateKey){
   document.body.classList.add("modal-open");
 
   if(instanceOrNull){
-    const inst = instanceOrNull; // may be instance of a repeating series OR a base event
+    const inst = instanceOrNull;
     const isRepeating = !!inst.repeat && inst.repeat!=="none";
-    const baseId = inst.baseId || inst.id; // base id for non-repeating
+    const baseId = inst.baseId || inst.id;
     const instanceISO = inst.instanceISO || null;
     editingMeta = { baseId, instanceISO, isRepeating, originalStartISO: inst.start instanceof Date ? inst.start.toISOString() : inst.start };
 
@@ -288,7 +278,7 @@ function openModal(instanceOrNull, dateKey){
     document.getElementById("modal-repeat").value  = inst.repeat || "none";
     document.getElementById("modal-delete").style.display = "inline-block";
   } else {
-    // creating new at dateKey 12-1pm
+    // creating new at dateKey 12-1pm, default category = School
     editingMeta = { baseId: null, instanceISO: null, isRepeating: false, originalStartISO: null };
     document.getElementById("modal-title-text").textContent = "Add Event";
     form.reset();
@@ -297,7 +287,7 @@ function openModal(instanceOrNull, dateKey){
     document.getElementById("modal-title").value   = "";
     document.getElementById("modal-start").value   = start;
     document.getElementById("modal-end").value     = end;
-    setSelectedCategory("Personal");
+    setSelectedCategory("School");            // ❗ default to School
     document.getElementById("modal-repeat").value  = "none";
     document.getElementById("modal-delete").style.display = "none";
   }
@@ -324,15 +314,12 @@ document.getElementById("modal-delete").onclick = ()=>{
     const future = confirm("Delete this and future occurrences?\n\nOK = this and future\nCancel = only this instance");
     const instISO = editingMeta.instanceISO || editingMeta.originalStartISO;
     if(future){
-      // Cut off the series at this instance
-      base.until = instISO; // stop at this occurrence (no future)
+      base.until = instISO; // stop at this occurrence
     }else{
-      // Skip only this occurrence
       base.exDates = base.exDates || [];
       if(!base.exDates.includes(instISO)) base.exDates.push(instISO);
     }
   }else{
-    // Non-repeating: remove base
     const idx = events.findIndex(e => e.id === base.id);
     if(idx >= 0) events.splice(idx,1);
   }
@@ -341,6 +328,7 @@ document.getElementById("modal-delete").onclick = ()=>{
 };
 
 document.getElementById("modal-category-group").addEventListener("change", ()=>{
+  // setSelectedCategory already updates accent; but we call explicitly for safety
   updateModalAccent(getSelectedCategory());
 });
 document.getElementById("modal-start").addEventListener("change", refreshRepeatLabels);
@@ -368,23 +356,19 @@ form.onsubmit = (e)=>{
       const instISO = editingMeta.instanceISO || editingMeta.originalStartISO;
 
       if(future){
-        // Shift series start to this edited instance time; keep duration from new start/end
         base.title = title;
         base.category = category;
         base.repeat = repeat;
         base.start = start;           // re-anchor series at this edited time
         base.end   = end;
-        // Clear cut-off if it conflicts
         if(base.until && new Date(base.until) < new Date(base.start)) base.until = null;
       }else{
-        // Detach: skip original instance & create a one-off
         base.exDates = base.exDates || [];
         if(!base.exDates.includes(instISO)) base.exDates.push(instISO);
         const id = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
         events.push({ id, title, start, end, category, repeat: "none" });
       }
     }else{
-      // Non-repeating: update base
       base.title = title;
       base.category = category;
       base.repeat = repeat;
@@ -450,18 +434,18 @@ function buildBlockFromFragment(fr, dayKey, roleRec){
   block.className = `event-block category-${fr.ev.category.toLowerCase()}`;
   block.style.top    = `${fr.startMin*MINUTE_PX}px`;
   block.style.height = `${heightPx}px`;
-  block.dataset.id   = fr.ev.id; // instance id below
+  block.dataset.id   = fr.ev.id;
   block.dataset.day  = dayKey;
   block.dataset.startMin = fr.startMin;
   block.dataset.endMin   = fr.endMin;
   block.style.zIndex = String(zForDuration(duration));
 
-  // layout width
   const setLW = (leftPct, widthPct)=>{
     block.style.left  = `calc(${leftPct}% + ${EV_GAP_PX}px)`;
     block.style.width = `calc(${widthPct}% - ${EV_GAP_PX*2}px)`;
     block.style.right = "auto";
   };
+
   if(!roleRec || roleRec.role==="primary"){
     block.style.left  = `${EV_GAP_PX}px`;
     block.style.right = `${EV_GAP_PX}px`;
@@ -479,7 +463,7 @@ function buildBlockFromFragment(fr, dayKey, roleRec){
   const fragStart = new Date(localStr(dayKey, fr.startMin));
   const fragEnd   = new Date(localStr(dayKey, fr.endMin));
 
-  // For clicks/edits, we need to know baseId + instanceISO if repeating
+  // For clicks/edits, carry baseId + instanceISO if repeating
   const instanceISO = fragStart.toISOString();
   const baseId = fr.ev.baseId || fr.ev.id;
   const repeat = fr.ev.repeat || "none";
@@ -499,9 +483,8 @@ function buildBlockFromFragment(fr, dayKey, roleRec){
   block.addEventListener("click", ev => {
     ev.stopPropagation();
     if(justDragged) return;
-    // open modal with instance metadata
     openModal({
-      id: baseId,               // base id for editing
+      id: baseId,
       baseId,
       instanceISO,
       title: fr.ev.title,
@@ -512,11 +495,12 @@ function buildBlockFromFragment(fr, dayKey, roleRec){
     }, dayKey);
   });
 
-  // Drag move (instance):
+  // Drag move (instance)
   block.addEventListener("pointerdown", ev => {
     const tgt = ev.target;
     if(tgt.classList.contains("resize-top") || tgt.classList.contains("resize-bottom")) return;
     ev.preventDefault(); ev.stopPropagation();
+    const duration = fr.endMin - fr.startMin;
     startDragMoveInstance({ baseId, instanceISO, title: fr.ev.title, category: fr.ev.category, repeat, durationMin: duration }, block, dayKey, ev);
   });
   rt.addEventListener("pointerdown", ev => { ev.preventDefault(); ev.stopPropagation(); startResizeInstance({ baseId, instanceISO, title: fr.ev.title, category: fr.ev.category, repeat }, block, dayKey, "top", ev); });
@@ -545,16 +529,9 @@ function renderEvents(){
         });
       }
     } else {
-      // non-repeating: keep as-is if visible & not in past
       const s=new Date(ev.start), e=new Date(ev.end);
       if(e > rangeStart && s < rangeEnd && s >= startOfDay(new Date())){
-        instances.push({
-          id: ev.id,
-          baseId: ev.id,
-          title: ev.title,
-          category: ev.category,
-          start: s, end: e, repeat: "none"
-        });
+        instances.push({ id: ev.id, baseId: ev.id, title: ev.title, category: ev.category, start: s, end: e, repeat: "none" });
       }
     }
   }
@@ -584,10 +561,7 @@ function applyCompactMode(block){
   else if (h <= 30) block.classList.add("compact");
 }
 
-/* ========= Drag/Resize on instances ========= */
-// Dragging a repeating occurrence asks for scope;
-// - Only this instance: detach → add one-off event, add base.exDates to skip original
-// - This and future: shift series anchor to the dropped time
+/* ========= Drag/Resize on instances with scope ========= */
 function startDragMoveInstance(meta, block, dayKey, pDown){
   const startY = pDown.clientY;
   const initTopPx = parseFloat(block.style.top) || 0;
@@ -647,19 +621,16 @@ function startDragMoveInstance(meta, block, dayKey, pDown){
       const future = confirm("Move this and future occurrences?\n\nOK = this and future\nCancel = only this instance");
       const instISO = meta.instanceISO;
       if(future){
-        // shift series anchor
         base.start = newStart;
         base.end   = newEnd;
         if(base.until && new Date(base.until) < new Date(base.start)) base.until = null;
       }else{
-        // detach this instance
         base.exDates = base.exDates || [];
         if(!base.exDates.includes(instISO)) base.exDates.push(instISO);
         const id = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
         events.push({ id, title: meta.title, start: newStart, end: newEnd, category: meta.category, repeat: "none" });
       }
     }else{
-      // non-repeating: just update base
       base.start = newStart; base.end = newEnd;
     }
 
