@@ -1,6 +1,5 @@
-// Dorado Calendar — auto theme (system only; no UI), 12/24h toggle by clicking time column,
-// repeats (future-only), drag/resize with cross-day wraparound, modal with category pills,
-// overlap layout (primary full width, second 75% shifted, third 50% shifted, others equal columns).
+// Dorado Calendar — click-to-create at clicked time, drag snap=15m, cross-day drag/resize,
+// custom confirms, repeats future-only, overlap layout, system dark/light.
 
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const HOUR_PX = 40;
@@ -10,6 +9,68 @@ const EV_GAP_PX = 6;
 
 const pad2 = n => String(n).padStart(2,"0");
 const hhmm = d => new Date(d).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+
+// ===== Custom Confirm Utilities =====
+async function showConfirm({ title = "Confirm", message = "", buttons = [
+  { id: "ok", label: "OK", variant: "primary" },
+  { id: "cancel", label: "Cancel", variant: "neutral" }
+]} = {}) {
+  return new Promise(resolve => {
+    const root = document.getElementById("confirm-root");
+    const backdrop = document.getElementById("confirm-backdrop");
+    const titleEl = document.getElementById("confirm-title");
+    const msgEl = document.getElementById("confirm-message");
+    const actions = document.getElementById("confirm-actions");
+
+    titleEl.textContent = title;
+    msgEl.textContent = message;
+    actions.innerHTML = "";
+
+    const makeBtn = ({id,label,variant}) => {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.className = "btn";
+      if (variant === "primary") b.classList.add("btn-primary");
+      else if (variant === "danger") b.classList.add("btn-danger");
+      b.addEventListener("click", () => cleanup(id));
+      return b;
+    };
+
+    buttons.forEach(cfg => actions.appendChild(makeBtn(cfg)));
+
+    function onKey(e){ if(e.key === "Escape") cleanup("escape"); }
+    function onBackdrop(){ cleanup("cancel"); }
+    function cleanup(result){
+      root.classList.add("hidden");
+      root.setAttribute("aria-hidden","true");
+      document.removeEventListener("keydown", onKey);
+      backdrop.removeEventListener("click", onBackdrop);
+      resolve(result);
+    }
+
+    root.classList.remove("hidden");
+    root.setAttribute("aria-hidden","false");
+    document.addEventListener("keydown", onKey);
+    backdrop.addEventListener("click", onBackdrop);
+  });
+}
+
+async function askRepeatScope(kind = "edit") {
+  const isEdit = kind === "edit";
+  const title = isEdit ? "Edit repeating event" : "Delete repeating event";
+  const message = isEdit
+    ? "Apply changes to this occurrence only, or this and all future occurrences?"
+    : "Delete this occurrence only, or this and all future occurrences?";
+  const res = await showConfirm({
+    title, message,
+    buttons: [
+      { id: "single", label: "Only this", variant: "neutral" },
+      { id: "future", label: "This & future", variant: "primary" },
+      { id: "cancel", label: "Cancel", variant: "danger" }
+    ]
+  });
+  return res;
+}
 
 // ===== Date utils =====
 function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
@@ -29,7 +90,7 @@ function zForDuration(mins){ return 1000 + Math.max(1, 1440 - Math.min(1440, Mat
 
 // ===== State =====
 let currentWeekStart = startOfWeekLocal(new Date());
-let events = [];                 // base events; supports repeat/exDates/until
+let events = [];
 let justDragged = false;
 
 // ===== Auto theme (system, no UI) =====
@@ -62,7 +123,7 @@ function nthDowOfMonth(year, month, dow, nth, hour, minute){
   return dt;
 }
 
-/* Expand repeats within [rangeStart, rangeEnd), future-only, respecting ev.until and ev.exDates */
+/* Expand repeats within [rangeStart, rangeEnd), future-only, respecting until/exDates */
 function* expandRepeats(ev, rangeStart, rangeEnd){
   const baseStart = new Date(ev.start);
   const baseEnd   = new Date(ev.end);
@@ -70,7 +131,7 @@ function* expandRepeats(ev, rangeStart, rangeEnd){
   const nowFloor = startOfDay(new Date());
   const minStart = new Date(Math.max(baseStart, nowFloor));
   const until = ev.until ? new Date(ev.until) : null;
-  const ex = new Set(ev.exDates || []); // ISO strings of instance starts
+  const ex = new Set(ev.exDates || []);
 
   switch((ev.repeat||"none")){
     case "none": {
@@ -164,7 +225,7 @@ function* expandRepeats(ev, rangeStart, rangeEnd){
 }
 
 // ===== Header & time column rendering =====
-let timeFormat = localStorage.getItem('timeFmt') || '24'; // '24' | '12'
+let timeFormat = localStorage.getItem('timeFmt') || '24';
 
 function renderWeekHeader(ws){
   const head = document.getElementById("days-head");
@@ -224,7 +285,20 @@ function renderDayBodies(ws){
     grid.className = "hour-grid";
     body.appendChild(grid);
 
-    body.addEventListener("click",()=>openModal(null, key));
+    // CLICK-TO-CREATE at clicked time (snapped to 15)
+    body.addEventListener("click",(ev)=>{
+      // ignore clicks that started on an event block
+      if (ev.target.closest(".event-block")) return;
+
+      const rect = body.getBoundingClientRect();
+      const y = ev.clientY - rect.top;                // px offset inside the day column
+      let mins = Math.max(0, Math.min(1439, Math.round(y / MINUTE_PX)));
+      mins = Math.round(mins / SNAP_MIN) * SNAP_MIN;  // snap to 15
+      const start = localStr(key, mins);
+      const end = localStr(key, Math.min(1439, mins + 60)); // default 60m (clamped to day)
+      openModal(null, key, { defaultStart: start, defaultEnd: end });
+    });
+
     wrap.appendChild(body);
   }
   renderEvents();
@@ -239,15 +313,15 @@ function renderWeek(){
   renderDayBodies(currentWeekStart);
 }
 
-// ===== Modal (category pills + repeat select + scope ops) =====
+// ===== Modal =====
 const modal = document.getElementById("modal");
 const form  = document.getElementById("modal-form");
 const modalAccent = document.getElementById("modal-accent");
-let editingMeta = null; // { baseId, instanceISO|null, isRepeating, originalStartISO }
+let editingMeta = null;
 
 function getSelectedCategory(){
   const r = document.querySelector('input[name="modal-cat"]:checked');
-  return r ? r.value : "School"; // default
+  return r ? r.value : "School";
 }
 function setSelectedCategory(cat){
   const sel = document.querySelector(`input[name="modal-cat"][value="${cat}"]`);
@@ -270,7 +344,13 @@ function getCategoryColor(cat){
 function refreshRepeatLabels(){
   const startVal = document.getElementById("modal-start").value;
   if(!startVal) return;
-  const { weeklyLabel, monthDayLabel, monthNthLabel, yearlyLabel } = buildRepeatLabels(startVal);
+  const d = new Date(startVal);
+  const nth = Math.floor((d.getDate()-1)/7)+1;
+  const weeklyLabel = `Weekly on ${["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][d.getDay()]}`;
+  const monthDayLabel = `Monthly on the ${[,"1st","2nd","3rd"][d.getDate()] || (d.getDate()+"th")}`;
+  const monthNthLabel = `Monthly on the ${[,"1st","2nd","3rd"][nth] || (nth+"th")} ${["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][d.getDay()]}`;
+  const yearlyLabel = `Yearly on ${["January","February","March","April","May","June","July","August","September","October","November","December"][d.getMonth()]} ${d.getDate()}`;
+
   const rep = document.getElementById("modal-repeat");
   for (const opt of rep.options){
     switch(opt.value){
@@ -282,8 +362,8 @@ function refreshRepeatLabels(){
   }
 }
 
-/* Open modal for create or edit */
-function openModal(instanceOrNull, dateKey){
+/* Open modal — supports defaults when creating: opts={defaultStart,defaultEnd} */
+function openModal(instanceOrNull, dateKey, opts={}){
   if (justDragged){ justDragged = false; return; }
   modal.style.display = "grid";
   modal.setAttribute("aria-hidden","false");
@@ -291,10 +371,9 @@ function openModal(instanceOrNull, dateKey){
 
   if(instanceOrNull){
     const inst = instanceOrNull;
-    const isRepeating = !!inst.repeat && inst.repeat!=="none";
     const baseId = inst.baseId || inst.id;
     const instanceISO = inst.instanceISO || null;
-    editingMeta = { baseId, instanceISO, isRepeating, originalStartISO: inst.start instanceof Date ? inst.start.toISOString() : inst.start };
+    editingMeta = { baseId, instanceISO, isRepeating: !!(inst.repeat && inst.repeat!=="none"), originalStartISO: inst.start instanceof Date ? inst.start.toISOString() : inst.start };
 
     document.getElementById("modal-title-text").textContent = "Edit Event";
     document.getElementById("modal-title").value   = inst.title;
@@ -304,12 +383,11 @@ function openModal(instanceOrNull, dateKey){
     document.getElementById("modal-repeat").value  = inst.repeat || "none";
     document.getElementById("modal-delete").style.display = "inline-block";
   } else {
-    // creating new at dateKey 12–1pm, default category = School
     editingMeta = { baseId: null, instanceISO: null, isRepeating: false, originalStartISO: null };
     document.getElementById("modal-title-text").textContent = "Add Event";
     form.reset();
-    const start = `${dateKey}T12:00`;
-    const end   = `${dateKey}T13:00`;
+    const start = opts.defaultStart || `${dateKey}T12:00`;
+    const end   = opts.defaultEnd   || `${dateKey}T13:00`;
     document.getElementById("modal-title").value   = "";
     document.getElementById("modal-start").value   = start;
     document.getElementById("modal-end").value     = end;
@@ -331,21 +409,31 @@ function closeModal(){
 document.getElementById("modal-cancel").onclick = ()=>closeModal();
 document.getElementById("modal-backdrop").onclick = ()=>closeModal();
 
-document.getElementById("modal-delete").onclick = ()=>{
+document.getElementById("modal-delete").onclick = async () => {
   if(!editingMeta) return;
   const base = events.find(e => e.id === editingMeta.baseId);
   if(!base) return closeModal();
 
   if(base.repeat && base.repeat !== "none"){
-    const future = confirm("Delete this and future occurrences?\n\nOK = this and future\nCancel = only this instance");
+    const scope = await askRepeatScope("delete");
+    if(scope === "cancel" || scope === "escape") return;
     const instISO = editingMeta.instanceISO || editingMeta.originalStartISO;
-    if(future){
-      base.until = instISO; // stop at this occurrence
-    }else{
+    if(scope === "future"){
+      base.until = instISO;
+    }else if(scope === "single"){
       base.exDates = base.exDates || [];
       if(!base.exDates.includes(instISO)) base.exDates.push(instISO);
     }
   }else{
+    const r = await showConfirm({
+      title: "Delete event",
+      message: "Are you sure you want to delete this event?",
+      buttons: [
+        { id: "cancel", label: "Cancel", variant: "neutral" },
+        { id: "ok", label: "Delete", variant: "danger" }
+      ]
+    });
+    if (r !== "ok") return;
     const idx = events.findIndex(e => e.id === base.id);
     if(idx >= 0) events.splice(idx,1);
   }
@@ -358,7 +446,7 @@ document.getElementById("modal-category-group").addEventListener("change", ()=>{
 });
 document.getElementById("modal-start").addEventListener("change", refreshRepeatLabels);
 
-form.onsubmit = (e)=>{
+form.onsubmit = async (e)=>{
   e.preventDefault();
   const title    = document.getElementById("modal-title").value.trim();
   const start    = document.getElementById("modal-start").value;
@@ -376,17 +464,18 @@ form.onsubmit = (e)=>{
     if(!base) return;
 
     if(base.repeat && base.repeat!=="none"){
-      const future = confirm("Apply changes to this and future occurrences?\n\nOK = this and future\nCancel = only this instance");
+      const scope = await askRepeatScope("edit");
+      if(scope === "cancel" || scope === "escape"){ closeModal(); return; }
       const instISO = editingMeta.instanceISO || editingMeta.originalStartISO;
 
-      if(future){
+      if(scope === "future"){
         base.title = title;
         base.category = category;
         base.repeat = repeat;
-        base.start = start;           // re-anchor series at this edited time
+        base.start = start;
         base.end   = end;
         if(base.until && new Date(base.until) < new Date(base.start)) base.until = null;
-      }else{
+      }else if(scope === "single"){
         base.exDates = base.exDates || [];
         if(!base.exDates.includes(instISO)) base.exDates.push(instISO);
         const id = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
@@ -462,7 +551,7 @@ function buildBlockFromFragment(fr, dayKey, roleRec){
   block.dataset.day  = dayKey;
   block.dataset.startMin = fr.startMin;
   block.dataset.endMin   = fr.endMin;
-  block.style.zIndex = String(zForDuration(duration));
+  block.style.zIndex = String(zForDuration(duration)); // base z; header sits above via CSS
 
   const setLW = (leftPct, widthPct)=>{
     block.style.left  = `calc(${leftPct}% + ${EV_GAP_PX}px)`;
@@ -517,7 +606,7 @@ function buildBlockFromFragment(fr, dayKey, roleRec){
     }, dayKey);
   });
 
-  // Drag move (instance)
+  // Drag move (instance) — SNAP to 15 during drag
   block.addEventListener("pointerdown", ev => {
     const tgt = ev.target;
     if(tgt.classList.contains("resize-top") || tgt.classList.contains("resize-bottom")) return;
@@ -581,7 +670,7 @@ function applyCompactMode(block){
   else if (h <= 30) block.classList.add("compact");
 }
 
-// ===== Drag/Resize on instances with cross-day wraparound =====
+// ===== Drag/Resize with cross-day & SNAP =====
 function startDragMoveInstance(meta, block, dayKey, pDown){
   const startY = pDown.clientY;
   const initTopPx = parseFloat(block.style.top) || 0;
@@ -591,12 +680,11 @@ function startDragMoveInstance(meta, block, dayKey, pDown){
   let moved=false;
 
   const originalZ = block.style.zIndex;
-  block.style.zIndex = "9999";
+  block.style.zIndex = "8000"; // keep below sticky header
   block.setPointerCapture(pDown.pointerId);
   document.body.style.userSelect = "none";
   document.body.style.cursor = "grabbing";
 
-  // allow free movement across days (can be <0 or >1440-fragDur)
   let curTopMin = Math.round(initTopPx/MINUTE_PX);
 
   let raf=null;
@@ -605,21 +693,21 @@ function startDragMoveInstance(meta, block, dayKey, pDown){
     if(!raf){
       raf=requestAnimationFrame(()=>{
         const propMin = Math.round((initTopPx + dy)/MINUTE_PX);
-        // no per-day clamp; let it go negative or beyond
-        curTopMin = propMin;
+        // SNAP to 15, allow negative/overflow (cross-day)
+        curTopMin = Math.round(propMin / SNAP_MIN) * SNAP_MIN;
 
-        // switch days while dragging if pointer crosses columns
+        // switch days if pointer crosses
         const el = document.elementFromPoint(ev.clientX, ev.clientY);
         const u = el ? (el.closest(".day-body") || targetBody) : targetBody;
         if(u && u!==targetBody){ targetBody=u; targetBody.appendChild(block); }
 
-        // keep the visual box within the column bounds (for visibility only)
+        // visible top clamped to column for display
         const visTop = Math.max(0, Math.min(24*60 - Math.min(fragDurMin, 24*60), curTopMin));
         block.style.top = `${visTop*MINUTE_PX}px`;
 
         moved=true; justDragged=true;
 
-        // live time text reflecting cross-day movement
+        // live time text
         const totalStartAbs = curTopMin;
         const totalEndAbs   = curTopMin + fragDurMin;
 
@@ -642,7 +730,7 @@ function startDragMoveInstance(meta, block, dayKey, pDown){
     }
   };
 
-  const onUp = ()=>{
+  const onUp = async ()=>{
     block.releasePointerCapture(pDown.pointerId);
     document.removeEventListener("pointermove", onMove);
     document.removeEventListener("pointerup",   onUp);
@@ -668,12 +756,13 @@ function startDragMoveInstance(meta, block, dayKey, pDown){
     if(!base){ justDragged=false; renderEvents(); return; }
 
     if(base.repeat && base.repeat!=="none"){
-      const future = confirm("Move this and future occurrences?\n\nOK = this and future\nCancel = only this instance");
+      const scope = await askRepeatScope("edit");
+      if(scope === "cancel" || scope === "escape"){ setTimeout(()=>{ justDragged=false; },120); renderEvents(); return; }
       const instISO = meta.instanceISO;
-      if(future){
+      if(scope === "future"){
         base.start = newStart; base.end = newEnd;
         if(base.until && new Date(base.until) < new Date(base.start)) base.until = null;
-      }else{
+      }else if(scope === "single"){
         base.exDates = base.exDates || [];
         if(!base.exDates.includes(instISO)) base.exDates.push(instISO);
         const id = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
@@ -699,7 +788,7 @@ function startResizeInstance(meta, block, fixedDayKey, edge, pDown){
   const initDurMin= Math.max(5, Math.round(initHpx/MINUTE_PX));
   let curTop=initTopMin, curDur=initDurMin;
 
-  block.style.zIndex = "9999";
+  block.style.zIndex = "8000"; // keep below sticky header
   block.setPointerCapture(pDown.pointerId);
   document.body.style.userSelect="none";
   document.body.style.cursor="ns-resize";
@@ -710,23 +799,21 @@ function startResizeInstance(meta, block, fixedDayKey, edge, pDown){
     if(!raf){
       raf=requestAnimationFrame(()=>{
         if(edge==="top"){
-          // allow crossing to previous day by going negative
           const nextTop = initTopMin + Math.round(dy/MINUTE_PX);
-          const snappedTop = Math.round(nextTop/SNAP_MIN)*SNAP_MIN;
-          curTop = snappedTop;                    // can be <0
-          curDur = Math.max(5, initDurMin + (initTopMin - curTop));
-          // visual pin (keep visible)
+          const snappedTop = Math.round(nextTop/SNAP_MIN)*SNAP_MIN; // SNAP
+          curTop = snappedTop;
+          curDur = Math.max(5, Math.round((initDurMin + (initTopMin - curTop))/SNAP_MIN)*SNAP_MIN);
           const visTop = Math.max(0, Math.min(24*60 - 5, curTop));
           block.style.top = `${visTop*MINUTE_PX}px`;
           block.style.height = `${Math.max(5, Math.min(curDur, 24*60))*MINUTE_PX}px`;
         }else{
           const nextDur = initDurMin + Math.round(dy/MINUTE_PX);
-          const snappedDur = Math.round(nextDur/SNAP_MIN)*SNAP_MIN;
-          curDur = Math.max(5, snappedDur);      // can exceed day height
+          const snappedDur = Math.round(nextDur/SNAP_MIN)*SNAP_MIN; // SNAP
+          curDur = Math.max(5, snappedDur);
           block.style.height = `${Math.min(curDur, 24*60)*MINUTE_PX}px`;
         }
 
-        // live time text with cross-day math
+        // live time text
         const baseDay = fromKey(fixedDayKey);
         const startAbs = curTop;
         const endAbs   = curTop + curDur;
@@ -750,7 +837,7 @@ function startResizeInstance(meta, block, fixedDayKey, edge, pDown){
     }
   };
 
-  const onUp = ()=>{
+  const onUp = async ()=>{
     block.releasePointerCapture(pDown.pointerId);
     document.removeEventListener("pointermove", onMove);
     document.removeEventListener("pointerup",   onUp);
@@ -774,12 +861,13 @@ function startResizeInstance(meta, block, fixedDayKey, edge, pDown){
     const base = events.find(e => e.id === meta.baseId);
     if(base){
       if(base.repeat && base.repeat!=="none"){
-        const future = confirm("Apply duration change to this and future occurrences?\n\nOK = this and future\nCancel = only this instance");
+        const scope = await askRepeatScope("edit");
+        if(scope === "cancel" || scope === "escape"){ setTimeout(()=>{ justDragged=false; },120); renderEvents(); return; }
         const instISO = meta.instanceISO;
-        if(future){
+        if(scope === "future"){
           base.start = newStart; base.end = newEnd;
           if(base.until && new Date(base.until) < new Date(base.start)) base.until = null;
-        }else{
+        }else if(scope === "single"){
           base.exDates = base.exDates || [];
           if(!base.exDates.includes(instISO)) base.exDates.push(instISO);
           const id = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
@@ -800,7 +888,6 @@ function startResizeInstance(meta, block, fixedDayKey, edge, pDown){
 
 // ===== Boot =====
 document.addEventListener("DOMContentLoaded", ()=>{
-  // auto theme: follow OS and live-update
   applySystemTheme();
   mqlDark.addEventListener('change', applySystemTheme);
 
@@ -813,7 +900,6 @@ document.addEventListener("DOMContentLoaded", ()=>{
   if(next) next.onclick = ()=>{ currentWeekStart = addDays(currentWeekStart, 7); renderWeek(); };
   if(today) today.onclick= ()=>{ currentWeekStart = startOfWeekLocal(new Date()); renderWeek(); };
 
-  // Keyboard niceties
   document.addEventListener('keydown', (e) => {
     if (e.target && ['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
     if (e.key === 'ArrowLeft') { currentWeekStart = addDays(currentWeekStart, -7); renderWeek(); }

@@ -2,13 +2,13 @@
   --bg: #fff;
   --text: #111;
   --border: #ccc;
-  --hour-h: 40px;                 /* must match HOUR_PX in script.js */
-  --today-accent: #f1c233;        /* current day highlight */
+  --hour-h: 40px;
+  --today-accent: #f1c233;
   --today-bg: rgba(241,194,51,.18);
 
-  --school: #1e88e5;              /* blue */
-  --activities: #e53935;          /* red */
-  --personal: #43a047;            /* green */
+  --school: #1e88e5;
+  --activities: #e53935;
+  --personal: #43a047;
 
   --btn-primary: #1e88e5;
   --btn-primary-hover: #176dc0;
@@ -26,7 +26,6 @@
   --btn-neutral: #2a2a2a;
 }
 
-/* Hint native controls */
 @media (prefers-color-scheme: dark) { :root { color-scheme: dark; } }
 
 /* ===== General layout ===== */
@@ -48,7 +47,7 @@ header {
   background: var(--bg);
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 20000;   /* ensure header stays above dragged events */
 }
 header h1 { margin: 0; font-size: 18px; text-align: center; }
 .header-spacer { min-width: 1px; }
@@ -81,6 +80,9 @@ header h1 { margin: 0; font-size: 18px; text-align: center; }
   border-bottom: 1px solid var(--border);
   background: var(--bg);
   font-size: 12px;
+  position: sticky;
+  top: 60px;        /* sits under header; adjust if header height changes */
+  z-index: 15000;   /* above events */
 }
 .legend-item { display: flex; align-items: center; gap: 6px; }
 .legend-color { width: 12px; height: 12px; border-radius: 3px; }
@@ -91,8 +93,8 @@ header h1 { margin: 0; font-size: 18px; text-align: center; }
 /* ===== Layout frame ===== */
 main {
   display: grid;
-  grid-template-columns: 70px 1fr;  /* time column + days area */
-  height: calc(100vh - 140px);      /* header + legend allowance */
+  grid-template-columns: 70px 1fr;
+  height: auto;
 }
 
 /* Time column with top spacer to align with date row */
@@ -100,7 +102,7 @@ main {
   border-right: 1px solid var(--border);
   background: var(--bg);
   display: grid;
-  grid-template-rows: 32px auto;   /* 32px header spacer + 24h ticks */
+  grid-template-rows: 32px auto;
 }
 .time-head-spacer {
   display: flex;
@@ -110,6 +112,10 @@ main {
   color: #777;
   border-bottom: 1px solid var(--border);
   user-select: none;
+  position: sticky;
+  top: calc(60px + 28px); /* below header+legend-ish */
+  background: var(--bg);
+  z-index: 14000;
 }
 #time-body .tick {
   border-bottom: 1px solid var(--border);
@@ -121,17 +127,17 @@ main {
   padding-right: 6px;
   font-size: 11px;
   user-select: none;
-  cursor: pointer;        /* click to toggle 24h/12h */
+  cursor: pointer;
 }
 
 /* Days area */
 .days {
   display: grid;
-  grid-template-rows: 32px auto;   /* 32px dates row + 24h grid */
-  overflow: hidden;
+  grid-template-rows: 32px auto;
+  overflow: visible;
 }
 
-/* Dates row directly above columns */
+/* Dates row directly above columns — sticky */
 .days-head {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -140,6 +146,9 @@ main {
   border-bottom: 1px solid var(--border);
   padding: 0;
   margin: 0;
+  position: sticky;
+  top: calc(60px + 28px); /* under header + aligns with time head spacer */
+  z-index: 15000;         /* stay above events while scrolling */
 }
 .day-name {
   text-align: center;
@@ -147,6 +156,7 @@ main {
   font-size: 13px;
   line-height: 32px;
   border-bottom: 3px solid transparent;
+  background: var(--bg);
 }
 .day-name.is-today {
   color: var(--today-accent);
@@ -198,6 +208,7 @@ main {
   flex-direction: column;
   justify-content: flex-start;
   font-size: 10px;
+  z-index: 100;            /* base — header/legend are higher */
 }
 .event-block .title {
   font-weight: 500;
@@ -208,14 +219,14 @@ main {
 }
 .event-block .time {
   font-size: 9px;
-  opacity: 0.85;
+  opacity: 0.9;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .event-block:hover { box-shadow: 0 0 3px rgba(0,0,0,0.4); }
 
-/* Event categories */
+/* Categories */
 .category-school { background: var(--school); }
 .category-activities { background: var(--activities); }
 .category-personal { background: var(--personal); }
@@ -244,13 +255,13 @@ main {
   grid-template-rows: 1fr auto;
   align-items: center;
   justify-items: center;
-  z-index: 10000;
+  z-index: 30000;        /* above everything */
 }
 .modal-backdrop {
   position: absolute;
   inset: 0;
   background: rgba(0,0,0,0.5);
-  z-index: 10000;
+  z-index: 30000;
   backdrop-filter: blur(1.5px);
 }
 .modal-dialog {
@@ -261,21 +272,17 @@ main {
   padding: 22px 28px 24px;
   min-width: 440px;
   max-width: 560px;
-  z-index: 10001;
+  z-index: 30001;
   position: relative;
 }
-
-/* colored accent bar that matches category */
 .modal-accent {
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 5px;
-  background: var(--school); /* default; JS updates */
+  background: var(--school);
   border-radius: 12px 12px 0 0;
 }
-
 .modal-dialog h2 { margin: 10px 0 12px; }
-
 .modal-dialog input,
 .modal-dialog select {
   width: 100%;
@@ -287,7 +294,6 @@ main {
   background: var(--bg);
   color: var(--text);
 }
-
 .modal-dialog .row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -316,11 +322,9 @@ main {
   transition: background .15s, color .15s, border-color .15s;
 }
 .cat-pill input { display: none; }
-
 .cat-school      { border-color: var(--school);      color: var(--school); }
 .cat-activities  { border-color: var(--activities);  color: var(--activities); }
 .cat-personal    { border-color: var(--personal);    color: var(--personal); }
-
 .cat-school:has(input:checked)     { background: var(--school);     color: #fff; border-color: var(--school); }
 .cat-activities:has(input:checked) { background: var(--activities); color: #fff; border-color: var(--activities); }
 .cat-personal:has(input:checked)   { background: var(--personal);   color: #fff; border-color: var(--personal); }
@@ -355,4 +359,36 @@ body.modal-open .event-block { pointer-events: none; }
 /* Scrollbar */
 .days-wrap::-webkit-scrollbar { width: 8px; }
 .days-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+/* ===== Custom Confirm ===== */
+.confirm.hidden { display: none; }
+.confirm {
+  position: fixed; inset: 0; z-index: 31000;
+  display: grid; place-items: center;
+}
+.confirm-backdrop {
+  position: absolute; inset: 0; background: rgba(0,0,0,.45);
+  backdrop-filter: blur(1.5px);
+}
+.confirm-dialog {
+  position: relative;
+  background: var(--bg);
+  color: var(--text);
+  min-width: 360px; max-width: 520px;
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(0,0,0,.35);
+  padding: 18px 20px 16px;
+  z-index: 31001;
+}
+.confirm-accent {
+  position: absolute; top: 0; left: 0; right: 0; height: 5px;
+  background: var(--today-accent);
+  border-radius: 12px 12px 0 0;
+}
+.confirm-title { margin: 6px 0 8px; font-size: 16px; }
+.confirm-message { margin: 0 0 14px; line-height: 1.4; }
+.confirm-actions {
+  display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;
+}
+.confirm-actions .btn { min-width: 110px; }
 
