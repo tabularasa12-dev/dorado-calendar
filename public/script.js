@@ -1,5 +1,6 @@
 // Dorado Calendar — auto theme (system only; no UI), 12/24h toggle by clicking time column,
-// repeats (future-only), drag/resize, modal with category pills.
+// repeats (future-only), drag/resize with cross-day wraparound, modal with category pills,
+// overlap layout (primary full width, second 75% shifted, third 50% shifted, others equal columns).
 
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const HOUR_PX = 40;
@@ -580,11 +581,12 @@ function applyCompactMode(block){
   else if (h <= 30) block.classList.add("compact");
 }
 
-// ===== Drag/Resize on instances with scope =====
+// ===== Drag/Resize on instances with cross-day wraparound =====
 function startDragMoveInstance(meta, block, dayKey, pDown){
   const startY = pDown.clientY;
   const initTopPx = parseFloat(block.style.top) || 0;
   const fragDurMin = parseInt(block.dataset.endMin) - parseInt(block.dataset.startMin);
+
   let targetBody = block.closest(".day-body");
   let moved=false;
 
@@ -594,6 +596,7 @@ function startDragMoveInstance(meta, block, dayKey, pDown){
   document.body.style.userSelect = "none";
   document.body.style.cursor = "grabbing";
 
+  // allow free movement across days (can be <0 or >1440-fragDur)
   let curTopMin = Math.round(initTopPx/MINUTE_PX);
 
   let raf=null;
@@ -602,26 +605,43 @@ function startDragMoveInstance(meta, block, dayKey, pDown){
     if(!raf){
       raf=requestAnimationFrame(()=>{
         const propMin = Math.round((initTopPx + dy)/MINUTE_PX);
-        const snapped = Math.round(propMin/SNAP_MIN)*SNAP_MIN;
-        const clamped = Math.max(0, Math.min(24*60 - fragDurMin, snapped));
-        block.style.top = `${clamped*MINUTE_PX}px`;
-        curTopMin = clamped;
+        // no per-day clamp; let it go negative or beyond
+        curTopMin = propMin;
 
+        // switch days while dragging if pointer crosses columns
         const el = document.elementFromPoint(ev.clientX, ev.clientY);
         const u = el ? (el.closest(".day-body") || targetBody) : targetBody;
         if(u && u!==targetBody){ targetBody=u; targetBody.appendChild(block); }
 
+        // keep the visual box within the column bounds (for visibility only)
+        const visTop = Math.max(0, Math.min(24*60 - Math.min(fragDurMin, 24*60), curTopMin));
+        block.style.top = `${visTop*MINUTE_PX}px`;
+
         moved=true; justDragged=true;
 
-        const s = new Date(localStr(targetBody.dataset.date, clamped));
-        const en= new Date(localStr(targetBody.dataset.date, clamped+fragDurMin));
-        const t = block.querySelector(".time"); if(t) t.textContent = `${hhmm(s)} – ${hhmm(en)}`;
+        // live time text reflecting cross-day movement
+        const totalStartAbs = curTopMin;
+        const totalEndAbs   = curTopMin + fragDurMin;
 
+        const startShift = Math.floor(totalStartAbs / 1440);
+        const endShift   = Math.floor(totalEndAbs   / 1440);
+        const startMinInDay = ((totalStartAbs % 1440)+1440)%1440;
+        const endMinInDay   = ((totalEndAbs   % 1440)+1440)%1440;
+
+        const baseDay = fromKey(targetBody.dataset.date);
+        const startDate = addDays(baseDay, startShift);
+        const endDate   = addDays(baseDay, endShift);
+
+        const s = new Date(`${dateKeyLocal(startDate)}T${pad2(Math.floor(startMinInDay/60))}:${pad2(startMinInDay%60)}`);
+        const e = new Date(`${dateKeyLocal(endDate)}T${pad2(Math.floor(endMinInDay/60))}:${pad2(endMinInDay%60)}`);
+
+        const t = block.querySelector(".time"); if(t) t.textContent = `${hhmm(s)} – ${hhmm(e)}`;
         applyCompactMode(block);
         raf=null;
       });
     }
   };
+
   const onUp = ()=>{
     block.releasePointerCapture(pDown.pointerId);
     document.removeEventListener("pointermove", onMove);
@@ -630,8 +650,19 @@ function startDragMoveInstance(meta, block, dayKey, pDown){
 
     if(!moved){ block.style.zIndex=originalZ; justDragged=false; return; }
 
-    const newStart = localStr(targetBody.dataset.date, curTopMin);
-    const newEnd   = localStr(targetBody.dataset.date, curTopMin + fragDurMin);
+    const baseDay = fromKey(targetBody.dataset.date);
+    const totalStartAbs = curTopMin;
+    const totalEndAbs   = curTopMin + meta.durationMin;
+
+    const startShift = Math.floor(totalStartAbs / 1440);
+    const endShift   = Math.floor(totalEndAbs   / 1440);
+    const startMinInDay = ((totalStartAbs % 1440)+1440)%1440;
+    const endMinInDay   = ((totalEndAbs   % 1440)+1440)%1440;
+
+    const startKey = dateKeyLocal(addDays(baseDay, startShift));
+    const endKey   = dateKeyLocal(addDays(baseDay, endShift));
+    const newStart = localStr(startKey, startMinInDay);
+    const newEnd   = localStr(endKey,   endMinInDay);
 
     const base = events.find(e => e.id === meta.baseId);
     if(!base){ justDragged=false; renderEvents(); return; }
@@ -640,8 +671,7 @@ function startDragMoveInstance(meta, block, dayKey, pDown){
       const future = confirm("Move this and future occurrences?\n\nOK = this and future\nCancel = only this instance");
       const instISO = meta.instanceISO;
       if(future){
-        base.start = newStart;
-        base.end   = newEnd;
+        base.start = newStart; base.end = newEnd;
         if(base.until && new Date(base.until) < new Date(base.start)) base.until = null;
       }else{
         base.exDates = base.exDates || [];
@@ -680,29 +710,46 @@ function startResizeInstance(meta, block, fixedDayKey, edge, pDown){
     if(!raf){
       raf=requestAnimationFrame(()=>{
         if(edge==="top"){
+          // allow crossing to previous day by going negative
           const nextTop = initTopMin + Math.round(dy/MINUTE_PX);
           const snappedTop = Math.round(nextTop/SNAP_MIN)*SNAP_MIN;
-          const boundedTop = Math.max(0, Math.min(initTopMin+initDurMin-5, snappedTop));
-          curTop=boundedTop;
-          curDur=Math.max(5, initDurMin-(curTop-initTopMin));
-          block.style.top = `${curTop*MINUTE_PX}px`;
-          block.style.height = `${curDur*MINUTE_PX}px`;
+          curTop = snappedTop;                    // can be <0
+          curDur = Math.max(5, initDurMin + (initTopMin - curTop));
+          // visual pin (keep visible)
+          const visTop = Math.max(0, Math.min(24*60 - 5, curTop));
+          block.style.top = `${visTop*MINUTE_PX}px`;
+          block.style.height = `${Math.max(5, Math.min(curDur, 24*60))*MINUTE_PX}px`;
         }else{
           const nextDur = initDurMin + Math.round(dy/MINUTE_PX);
           const snappedDur = Math.round(nextDur/SNAP_MIN)*SNAP_MIN;
-          const maxDur=(24*60)-initTopMin;
-          curDur=Math.max(5, Math.min(maxDur, snappedDur));
-          block.style.height = `${curDur*MINUTE_PX}px`;
+          curDur = Math.max(5, snappedDur);      // can exceed day height
+          block.style.height = `${Math.min(curDur, 24*60)*MINUTE_PX}px`;
         }
-        const s=new Date(localStr(fixedDayKey, curTop));
-        const en=new Date(localStr(fixedDayKey, curTop+curDur));
+
+        // live time text with cross-day math
+        const baseDay = fromKey(fixedDayKey);
+        const startAbs = curTop;
+        const endAbs   = curTop + curDur;
+
+        const sShift = Math.floor(startAbs/1440);
+        const eShift = Math.floor(endAbs/1440);
+        const sMinIn = ((startAbs%1440)+1440)%1440;
+        const eMinIn = ((endAbs%1440)+1440)%1440;
+
+        const sKey = dateKeyLocal(addDays(baseDay, sShift));
+        const eKey = dateKeyLocal(addDays(baseDay, eShift));
+
+        const s = new Date(`${sKey}T${pad2(Math.floor(sMinIn/60))}:${pad2(sMinIn%60)}`);
+        const en= new Date(`${eKey}T${pad2(Math.floor(eMinIn/60))}:${pad2(eMinIn%60)}`);
         const t=block.querySelector(".time"); if(t) t.textContent = `${hhmm(s)} – ${hhmm(en)}`;
+
         applyCompactMode(block);
         justDragged=true;
         raf=null;
       });
     }
   };
+
   const onUp = ()=>{
     block.releasePointerCapture(pDown.pointerId);
     document.removeEventListener("pointermove", onMove);
@@ -710,16 +757,27 @@ function startResizeInstance(meta, block, fixedDayKey, edge, pDown){
     document.body.style.userSelect="";
     document.body.style.cursor="";
 
-    const newStart = localStr(fixedDayKey, curTop);
-    const newEnd   = localStr(fixedDayKey, curTop+curDur);
+    const baseDay = fromKey(fixedDayKey);
+    const startAbs = curTop;
+    const endAbs   = curTop + curDur;
+
+    const sShift = Math.floor(startAbs/1440);
+    const eShift = Math.floor(endAbs/1440);
+    const sMinIn = ((startAbs%1440)+1440)%1440;
+    const eMinIn = ((endAbs%1440)+1440)%1440;
+
+    const sKey = dateKeyLocal(addDays(baseDay, sShift));
+    const eKey = dateKeyLocal(addDays(baseDay, eShift));
+    const newStart = localStr(sKey, sMinIn);
+    const newEnd   = localStr(eKey, eMinIn);
+
     const base = events.find(e => e.id === meta.baseId);
     if(base){
       if(base.repeat && base.repeat!=="none"){
         const future = confirm("Apply duration change to this and future occurrences?\n\nOK = this and future\nCancel = only this instance");
         const instISO = meta.instanceISO;
         if(future){
-          base.start = newStart;
-          base.end   = newEnd;
+          base.start = newStart; base.end = newEnd;
           if(base.until && new Date(base.until) < new Date(base.start)) base.until = null;
         }else{
           base.exDates = base.exDates || [];
