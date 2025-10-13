@@ -17,6 +17,7 @@
   --btn-neutral: #e9ecef;
 }
 
+/* Dark variables applied when <html data-theme="dark"> */
 [data-theme="dark"] {
   --bg: #1b1b1b;
   --text: #eee;
@@ -24,6 +25,11 @@
   --today-accent: #f1c233;
   --today-bg: rgba(241,194,51,.18);
   --btn-neutral: #2a2a2a;
+}
+
+/* Optional: hint native controls to OS preference */
+@media (prefers-color-scheme: dark) {
+  :root { color-scheme: dark; }
 }
 
 /* ===== General layout ===== */

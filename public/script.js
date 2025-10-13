@@ -1,5 +1,5 @@
-// Dorado Calendar — repeats (future-only) + drag/resize + edit/delete scope
-// Defaults: new events start with Category = School. Header nav buttons are CSS-only.
+// Dorado Calendar — auto theme (system), repeats (future-only), drag/resize, instance/future scope.
+// New events default to Category = School.
 
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const HOUR_PX = 40;
@@ -28,6 +28,12 @@ function zForDuration(mins){ return 1000 + Math.max(1, 1440 - Math.min(1440, Mat
 let currentWeekStart = startOfWeekLocal(new Date());
 let events = [];                 // base events; supports repeat/exDates/until
 let justDragged = false;
+
+/* ========= Auto Theme (system-following, no button) ========= */
+const mqlDark = window.matchMedia('(prefers-color-scheme: dark)');
+function applySystemTheme() {
+  document.documentElement.setAttribute('data-theme', mqlDark.matches ? 'dark' : 'light');
+}
 
 /* ========= Repeat helpers ========= */
 function ordinal(n){
@@ -287,7 +293,7 @@ function openModal(instanceOrNull, dateKey){
     document.getElementById("modal-title").value   = "";
     document.getElementById("modal-start").value   = start;
     document.getElementById("modal-end").value     = end;
-    setSelectedCategory("School");            // ❗ default to School
+    setSelectedCategory("School");
     document.getElementById("modal-repeat").value  = "none";
     document.getElementById("modal-delete").style.display = "none";
   }
@@ -328,7 +334,6 @@ document.getElementById("modal-delete").onclick = ()=>{
 };
 
 document.getElementById("modal-category-group").addEventListener("change", ()=>{
-  // setSelectedCategory already updates accent; but we call explicitly for safety
   updateModalAccent(getSelectedCategory());
 });
 document.getElementById("modal-start").addEventListener("change", refreshRepeatLabels);
@@ -344,7 +349,6 @@ form.onsubmit = (e)=>{
   if(new Date(end) <= new Date(start)){ alert("End must be after start"); return; }
 
   if(!editingMeta || !editingMeta.baseId){
-    // Create new base event
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
     events.push({ id, title, start, end, category, repeat, exDates: [] });
   }else{
@@ -463,7 +467,6 @@ function buildBlockFromFragment(fr, dayKey, roleRec){
   const fragStart = new Date(localStr(dayKey, fr.startMin));
   const fragEnd   = new Date(localStr(dayKey, fr.endMin));
 
-  // For clicks/edits, carry baseId + instanceISO if repeating
   const instanceISO = fragStart.toISOString();
   const baseId = fr.ev.baseId || fr.ev.id;
   const repeat = fr.ev.repeat || "none";
@@ -510,7 +513,6 @@ function buildBlockFromFragment(fr, dayKey, roleRec){
 }
 
 function renderEvents(){
-  // Build concrete instances for the visible week
   const rangeStart = startOfDay(currentWeekStart);
   const rangeEnd   = endOfWeekLocal(currentWeekStart);
 
@@ -536,7 +538,6 @@ function renderEvents(){
     }
   }
 
-  // Clear and render per day
   document.querySelectorAll(".event-block").forEach(n=>n.remove());
   document.querySelectorAll(".day-body").forEach(b=>{
     const dayKey = b.dataset.date;
@@ -688,7 +689,8 @@ function startResizeInstance(meta, block, fixedDayKey, edge, pDown){
     block.releasePointerCapture(pDown.pointerId);
     document.removeEventListener("pointermove", onMove);
     document.removeEventListener("pointerup",   onUp);
-    document.body.style.userSelect=""; document.body.style.cursor="";
+    document.body.style.userSelect="";
+    document.body.style.cursor="";
 
     const newStart = localStr(fixedDayKey, curTop);
     const newEnd   = localStr(fixedDayKey, curTop+curDur);
@@ -722,6 +724,10 @@ function startResizeInstance(meta, block, fixedDayKey, edge, pDown){
 
 /* ========= Boot ========= */
 document.addEventListener("DOMContentLoaded", ()=>{
+  // Auto theme: apply once and subscribe to OS changes
+  applySystemTheme();
+  mqlDark.addEventListener('change', applySystemTheme);
+
   renderWeek();
 
   const prev = document.getElementById("prev-week");
@@ -731,14 +737,16 @@ document.addEventListener("DOMContentLoaded", ()=>{
   if(next) next.onclick = ()=>{ currentWeekStart = addDays(currentWeekStart, 7); renderWeek(); };
   if(today) today.onclick= ()=>{ currentWeekStart = startOfWeekLocal(new Date()); renderWeek(); };
 
-  const btn = document.getElementById("theme-toggle");
-  if(btn){
-    btn.addEventListener("click", ()=>{
-      const html=document.documentElement;
-      const next= html.getAttribute("data-theme")==="dark" ? "light" : "dark";
-      html.setAttribute("data-theme", next);
-      btn.textContent = next==="dark" ? "☀️ Light" : "🌙 Dark";
-    });
-  }
+  // Optional keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if (e.target && ['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+    if (e.key === 'ArrowLeft') { currentWeekStart = addDays(currentWeekStart, -7); renderWeek(); }
+    if (e.key === 'ArrowRight'){ currentWeekStart = addDays(currentWeekStart,  7); renderWeek(); }
+    if (e.key.toLowerCase() === 't') { currentWeekStart = startOfWeekLocal(new Date()); renderWeek(); }
+    if (e.key.toLowerCase() === 'n') {
+      const todayKey = dateKeyLocal(new Date());
+      openModal(null, todayKey);
+    }
+  });
 });
 
