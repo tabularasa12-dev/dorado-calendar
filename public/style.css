@@ -26,7 +26,7 @@
   --btn-neutral: #2a2a2a;
 }
 
-/* Native control hint (optional) */
+/* Hint native controls */
 @media (prefers-color-scheme: dark) { :root { color-scheme: dark; } }
 
 /* ===== General layout ===== */
@@ -39,9 +39,9 @@ body {
 }
 
 header {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   padding: 12px 18px;
   border-bottom: 1px solid var(--border);
@@ -50,8 +50,10 @@ header {
   top: 0;
   z-index: 10;
 }
+header h1 { margin: 0; font-size: 18px; text-align: center; }
+.header-spacer { min-width: 1px; }
 
-/* Uniform header nav buttons (Prev / Today / Next) */
+/* Uniform header nav buttons */
 #controls { display: flex; gap: 8px; align-items: center; }
 #controls .nav-btn {
   appearance: none;
@@ -69,33 +71,6 @@ header {
 }
 #controls .nav-btn:hover { border-color: #aaa; }
 #controls .nav-btn:active { transform: translateY(1px); }
-
-/* Theme chooser segmented buttons */
-.theme-chooser {
-  display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  overflow: hidden;
-  background: var(--btn-neutral);
-  height: 36px;
-}
-.theme-btn {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  padding: 0 12px;
-  font: inherit;
-  cursor: pointer;
-}
-.theme-btn + .theme-btn { border-left: 1px solid var(--border); }
-.theme-btn[aria-pressed="true"] {
-  background: #d7dbe0;
-  font-weight: 600;
-}
-[data-theme="dark"] .theme-btn[aria-pressed="true"] {
-  background: #3a3a3a;
-}
 
 /* Legend above calendar */
 .legend-bar {
@@ -146,7 +121,7 @@ main {
   padding-right: 6px;
   font-size: 11px;
   user-select: none;
-  cursor: pointer;        /* so it's obvious you can click to toggle 12/24h */
+  cursor: pointer;        /* click to toggle 24h/12h */
 }
 
 /* Days area */

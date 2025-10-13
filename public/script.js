@@ -1,7 +1,6 @@
-// Dorado Calendar — theme chooser (system/dark/light) with persistence + live OS updates,
-// click-to-toggle 24h/12h times in the left column, repeats (future-only), drag/resize, modal.
+// Dorado Calendar — auto theme (system only; no UI), 12/24h toggle by clicking time column,
+// repeats (future-only), drag/resize, modal with category pills.
 
-// ===== Constants =====
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const HOUR_PX = 40;
 const MINUTE_PX = HOUR_PX / 60;
@@ -32,43 +31,9 @@ let currentWeekStart = startOfWeekLocal(new Date());
 let events = [];                 // base events; supports repeat/exDates/until
 let justDragged = false;
 
-// ===== Theme (system/dark/light) =====
-const THEME_KEY = 'themeMode'; // 'system' | 'dark' | 'light'
+// ===== Auto theme (system, no UI) =====
 const mqlDark = window.matchMedia('(prefers-color-scheme: dark)');
-
-function applyTheme(mode) {
-  if (mode === 'system') {
-    document.documentElement.setAttribute('data-theme', mqlDark.matches ? 'dark' : 'light');
-  } else {
-    document.documentElement.setAttribute('data-theme', mode);
-  }
-  reflectThemeButtons(mode);
-}
-function reflectThemeButtons(mode){
-  document.querySelectorAll('.theme-btn').forEach(btn=>{
-    const choice = btn.getAttribute('data-theme-choice');
-    btn.setAttribute('aria-pressed', choice === mode ? 'true' : 'false');
-  });
-}
-function getThemeMode() { return localStorage.getItem(THEME_KEY) || 'system'; }
-function setThemeMode(mode){
-  if (mode === 'system') localStorage.removeItem(THEME_KEY);
-  else localStorage.setItem(THEME_KEY, mode);
-  applyTheme(mode);
-}
-function wireThemeChooser(){
-  document.querySelectorAll('.theme-btn').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const choice = btn.getAttribute('data-theme-choice');
-      setThemeMode(choice);
-    });
-  });
-  // live-follow system only when in 'system' mode
-  mqlDark.addEventListener('change', ()=>{
-    if (getThemeMode() === 'system') applyTheme('system');
-  });
-  applyTheme(getThemeMode());
-}
+function applySystemTheme(){ document.documentElement.setAttribute('data-theme', mqlDark.matches ? 'dark' : 'light'); }
 
 // ===== Repeat helpers =====
 function ordinal(n){ const s=["th","st","nd","rd"], v=n%100; return n + (s[(v-20)%10] || s[v] || s[0]); }
@@ -216,7 +181,6 @@ function renderWeekHeader(ws){
 
 function formatHourLabel(h){
   if (timeFormat === '24') return `${pad2(h)}:00`;
-  // 12h
   const ampm = h < 12 ? 'AM' : 'PM';
   const hour12 = h % 12 === 0 ? 12 : h % 12;
   return `${hour12}:00 ${ampm}`;
@@ -229,7 +193,6 @@ function renderTimeCol(){
     row.className = "tick";
     row.style.height = `${HOUR_PX}px`;
     row.textContent = formatHourLabel(h);
-    // Click any time label to toggle 24h/12h
     row.addEventListener('click', ()=>{
       timeFormat = timeFormat === '24' ? '12' : '24';
       localStorage.setItem('timeFmt', timeFormat);
@@ -237,7 +200,6 @@ function renderTimeCol(){
     });
     t.appendChild(row);
   }
-  // Also allow toggling by clicking the spacer label
   const spacer = document.querySelector('.time-head-spacer');
   if (spacer && !spacer._wiredToggle) {
     spacer.addEventListener('click', ()=>{
@@ -341,7 +303,7 @@ function openModal(instanceOrNull, dateKey){
     document.getElementById("modal-repeat").value  = inst.repeat || "none";
     document.getElementById("modal-delete").style.display = "inline-block";
   } else {
-    // creating new at dateKey 12-1pm, default category = School
+    // creating new at dateKey 12–1pm, default category = School
     editingMeta = { baseId: null, instanceISO: null, isRepeating: false, originalStartISO: null };
     document.getElementById("modal-title-text").textContent = "Add Event";
     form.reset();
@@ -510,7 +472,6 @@ function buildBlockFromFragment(fr, dayKey, roleRec){
   if(!roleRec || roleRec.role==="primary"){
     block.style.left  = `${EV_GAP_PX}px`;
     block.style.right = `${EV_GAP_PX}px`;
-    block.style.width = "";
   } else if(roleRec.role==="secondary1"){
     setLW(25,75);
   } else if(roleRec.role==="secondary2"){
@@ -781,7 +742,10 @@ function startResizeInstance(meta, block, fixedDayKey, edge, pDown){
 
 // ===== Boot =====
 document.addEventListener("DOMContentLoaded", ()=>{
-  wireThemeChooser();            // theme buttons + OS sync
+  // auto theme: follow OS and live-update
+  applySystemTheme();
+  mqlDark.addEventListener('change', applySystemTheme);
+
   renderWeek();
 
   const prev = document.getElementById("prev-week");
@@ -791,7 +755,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
   if(next) next.onclick = ()=>{ currentWeekStart = addDays(currentWeekStart, 7); renderWeek(); };
   if(today) today.onclick= ()=>{ currentWeekStart = startOfWeekLocal(new Date()); renderWeek(); };
 
-  // Keyboard shortcuts (optional niceties)
+  // Keyboard niceties
   document.addEventListener('keydown', (e) => {
     if (e.target && ['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
     if (e.key === 'ArrowLeft') { currentWeekStart = addDays(currentWeekStart, -7); renderWeek(); }
