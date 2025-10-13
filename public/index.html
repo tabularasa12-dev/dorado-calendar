@@ -33,7 +33,7 @@
       <div id="time-body"></div>
     </div>
 
-    <!-- Days area: dates header directly above the 24h grid -->
+    <!-- Dates header directly above the 24h grid -->
     <section class="days">
       <div class="days-head" id="days-head"></div>
       <div class="days-wrap" id="days-wrap"></div>
@@ -74,6 +74,17 @@
             <input type="radio" name="modal-cat" value="Personal"> Personal
           </label>
         </div>
+
+        <label>Repeat</label>
+        <select id="modal-repeat">
+          <!-- JS fills labels based on the chosen date -->
+          <option value="none">Does not repeat</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly on …</option>
+          <option value="monthly_day">Monthly on …</option>
+          <option value="monthly_nth_weekday">Monthly on the … …</option>
+          <option value="yearly">Yearly on …</option>
+        </select>
 
         <div class="actions">
           <button type="submit" class="btn btn-primary" id="modal-save">Save</button>

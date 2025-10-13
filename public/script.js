@@ -1,5 +1,6 @@
-// Dorado Calendar — stable week view, overlap roles, local time writes,
-// modal above grid with colored category pills & primary/danger buttons.
+// Dorado Calendar — repeats (future-only) + drag/resize + edit/delete scope
+// Scope confirm: on repeating events, choose "This instance only" or "This and future".
+// Instance-only edits are "detached": we create a one-off event and skip the original occurrence.
 
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const HOUR_PX = 40;
@@ -10,21 +11,168 @@ const EV_GAP_PX = 6;
 const pad2 = n => String(n).padStart(2,"0");
 const hhmm = d => new Date(d).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
 
-// Local helpers (avoid ISO/UTC issues)
 function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+function addWeeks(d,n){ return addDays(d, n*7); }
+function addMonths(d,n){ const x=new Date(d); const day=x.getDate(); x.setMonth(x.getMonth()+n); if(x.getDate()<day) x.setDate(0); return x; }
+function addYears(d,n){ const x=new Date(d); x.setFullYear(x.getFullYear()+n); return x; }
+
 function startOfWeekLocal(d){ const x=new Date(d); x.setHours(0,0,0,0); x.setDate(x.getDate()-x.getDay()); return x; }
 function endOfWeekLocal(d){ const s=startOfWeekLocal(d); const e=new Date(s); e.setDate(e.getDate()+7); return e; }
+function startOfDay(d){ const x=new Date(d); x.setHours(0,0,0,0); return x; }
+
 function dateKeyLocal(d){ const x=new Date(d); x.setHours(0,0,0,0); return `${x.getFullYear()}-${pad2(x.getMonth()+1)}-${pad2(x.getDate())}`; }
 function fromKey(key){ return new Date(`${key}T00:00`); }
 function localStr(key,mins){ const h=Math.floor(mins/60), m=mins%60; return `${key}T${pad2(h)}:${pad2(m)}`; }
 
+function minutes(dt){ const d=new Date(dt); return d.getHours()*60 + d.getMinutes(); }
 function zForDuration(mins){ return 1000 + Math.max(1, 1440 - Math.min(1440, Math.round(mins))); }
 
 let currentWeekStart = startOfWeekLocal(new Date());
-let events = [];
+let events = [];                 // base events, may have repeat/exDates/until
 let justDragged = false;
 
-/* ===== Frame ===== */
+/* ========= Repeat helpers ========= */
+function ordinal(n){
+  const s=["th","st","nd","rd"], v=n%100;
+  return n + (s[(v-20)%10] || s[v] || s[0]);
+}
+function nthWeekdayOfMonth(date){
+  const d = new Date(date);
+  const nth = Math.floor((d.getDate()-1)/7) + 1;
+  return { nth, weekday: d.getDay() };
+}
+function weekdayName(i){ return ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][i]; }
+function monthName(i){ return ["January","February","March","April","May","June","July","August","September","October","November","December"][i]; }
+
+function buildRepeatLabels(dt){
+  const d = new Date(dt);
+  const { nth, weekday } = nthWeekdayOfMonth(d);
+  return {
+    weeklyLabel: `Weekly on ${weekdayName(d.getDay())}`,
+    monthDayLabel: `Monthly on the ${ordinal(d.getDate())}`,
+    monthNthLabel: `Monthly on the ${ordinal(nth)} ${weekdayName(weekday)}`,
+    yearlyLabel: `Yearly on ${monthName(d.getMonth())} ${ordinal(d.getDate())}`
+  };
+}
+
+function nthDowOfMonth(year, month, dow, nth, hour, minute){
+  const first = new Date(year, month, 1, hour||0, minute||0);
+  const delta = (dow - first.getDay() + 7) % 7;
+  const day = 1 + delta + (nth - 1)*7;
+  const dt = new Date(year, month, day, hour||0, minute||0);
+  if (dt.getMonth() !== month) return null;
+  return dt;
+}
+
+/* Expand repeats within [rangeStart, rangeEnd), future-only, respecting ev.until and ev.exDates */
+function* expandRepeats(ev, rangeStart, rangeEnd){
+  const baseStart = new Date(ev.start);
+  const baseEnd   = new Date(ev.end);
+  const durMs = baseEnd - baseStart;
+  const nowFloor = startOfDay(new Date());
+  const minStart = new Date(Math.max(baseStart, nowFloor));
+  const until = ev.until ? new Date(ev.until) : null;
+  const ex = new Set(ev.exDates || []); // ISO strings of instance starts
+
+  const yieldIfInRange = (cur)=>{
+    if(until && cur >= until) return false;
+    const end = new Date(cur.getTime()+durMs);
+    const key = cur.toISOString();
+    if(ex.has(key)) return true; // skip
+    if(end > rangeStart && cur < rangeEnd) {
+      return { start: new Date(cur), end };
+    }
+    return true;
+  };
+
+  switch((ev.repeat||"none")){
+    case "none": {
+      if(baseStart >= minStart && baseEnd > rangeStart && baseStart < rangeEnd){
+        yield { start: new Date(baseStart), end: new Date(baseEnd) };
+      }
+      break;
+    }
+    case "daily": {
+      let cur = new Date(baseStart);
+      while (cur < minStart) cur = addDays(cur,1);
+      while (cur < rangeEnd){
+        if(until && cur >= until) break;
+        if(!ex.has(cur.toISOString())){
+          const end = new Date(cur.getTime()+durMs);
+          if(end > rangeStart) yield { start: new Date(cur), end };
+        }
+        cur = addDays(cur,1);
+      }
+      break;
+    }
+    case "weekly": {
+      let cur = new Date(baseStart);
+      while (cur < minStart) cur = addWeeks(cur,1);
+      while (cur < rangeEnd){
+        if(until && cur >= until) break;
+        if(!ex.has(cur.toISOString())){
+          const end = new Date(cur.getTime()+durMs);
+          if(end > rangeStart) yield { start: new Date(cur), end };
+        }
+        cur = addWeeks(cur,1);
+      }
+      break;
+    }
+    case "monthly_day": {
+      let cur = new Date(baseStart);
+      while (cur < minStart){ cur = addMonths(cur,1); }
+      while (cur < rangeEnd){
+        if(until && cur >= until) break;
+        if(!ex.has(cur.toISOString())){
+          const end = new Date(cur.getTime()+durMs);
+          if(end > rangeStart) yield { start: new Date(cur), end };
+        }
+        const want = baseStart.getDate();
+        cur = addMonths(cur,1);
+        if (cur.getDate() !== want) {
+          const tmp = new Date(cur.getFullYear(), cur.getMonth(), want, baseStart.getHours(), baseStart.getMinutes());
+          if (tmp.getMonth() === cur.getMonth()) cur = tmp;
+        }
+      }
+      break;
+    }
+    case "monthly_nth_weekday": {
+      const base = new Date(baseStart);
+      const targetNth = Math.floor((base.getDate()-1)/7)+1;
+      const targetDow = base.getDay();
+      let curMonth = new Date(base.getFullYear(), base.getMonth(), 1, base.getHours(), base.getMinutes());
+      while (addMonths(curMonth,0) < startOfDay(minStart)) curMonth = addMonths(curMonth,1);
+      while (curMonth < rangeEnd){
+        const inst = nthDowOfMonth(curMonth.getFullYear(), curMonth.getMonth(), targetDow, targetNth, base.getHours(), base.getMinutes());
+        if (inst){
+          if(until && inst >= until) break;
+          const key = inst.toISOString();
+          if(!ex.has(key)){
+            const end = new Date(inst.getTime()+durMs);
+            if (inst >= minStart && end > rangeStart && inst < rangeEnd) yield { start: inst, end };
+          }
+        }
+        curMonth = addMonths(curMonth,1);
+      }
+      break;
+    }
+    case "yearly": {
+      let cur = new Date(baseStart);
+      while (cur < minStart) cur = addYears(cur,1);
+      while (cur < rangeEnd){
+        if(until && cur >= until) break;
+        if(!ex.has(cur.toISOString())){
+          const end = new Date(cur.getTime()+durMs);
+          if(end > rangeStart) yield { start: new Date(cur), end };
+        }
+        cur = addYears(cur,1);
+      }
+      break;
+    }
+  }
+}
+
+/* ========= UI frame ========= */
 function renderWeekHeader(ws){
   const head = document.getElementById("days-head");
   head.innerHTML = "";
@@ -74,12 +222,11 @@ function renderWeek(){
   renderDayBodies(currentWeekStart);
 }
 
-/* ===== Modal ===== */
+/* ========= Modal (category pills + repeat select + scope ops) ========= */
 const modal = document.getElementById("modal");
 const form  = document.getElementById("modal-form");
-const modalDialog = document.getElementById("modal-dialog");
 const modalAccent = document.getElementById("modal-accent");
-let editingId = null;
+let editingMeta = null; // { baseId, instanceISO|null, isRepeating, originalStartISO }
 
 function getSelectedCategory(){
   const r = document.querySelector('input[name="modal-cat"]:checked');
@@ -94,7 +241,6 @@ function updateModalAccent(cat){
   let color = getCategoryColor(cat);
   modalAccent.style.background = color;
 }
-
 function getCategoryColor(cat){
   switch((cat||"").toLowerCase()){
     case "school": return getComputedStyle(document.documentElement).getPropertyValue('--school') || '#1e88e5';
@@ -104,22 +250,47 @@ function getCategoryColor(cat){
   }
 }
 
-function openModal(event, dateKey){
+function refreshRepeatLabels(){
+  const startVal = document.getElementById("modal-start").value;
+  if(!startVal) return;
+  const { weeklyLabel, monthDayLabel, monthNthLabel, yearlyLabel } = buildRepeatLabels(startVal);
+  const rep = document.getElementById("modal-repeat");
+  for (const opt of rep.options){
+    switch(opt.value){
+      case "weekly": opt.textContent = weeklyLabel; break;
+      case "monthly_day": opt.textContent = monthDayLabel; break;
+      case "monthly_nth_weekday": opt.textContent = monthNthLabel; break;
+      case "yearly": opt.textContent = yearlyLabel; break;
+    }
+  }
+}
+
+/* Open modal for create or edit.
+   - For edit of an instance: meta carries baseId + instanceISO and repeat flag. */
+function openModal(instanceOrNull, dateKey){
   if (justDragged){ justDragged = false; return; }
   modal.style.display = "grid";
   modal.setAttribute("aria-hidden","false");
   document.body.classList.add("modal-open");
-  document.getElementById("modal-title-text").textContent = event ? "Edit Event" : "Add Event";
 
-  if(event){
-    editingId = event.id;
-    document.getElementById("modal-title").value   = event.title;
-    document.getElementById("modal-start").value   = event.start;
-    document.getElementById("modal-end").value     = event.end;
-    setSelectedCategory(event.category);
+  if(instanceOrNull){
+    const inst = instanceOrNull; // may be instance of a repeating series OR a base event
+    const isRepeating = !!inst.repeat && inst.repeat!=="none";
+    const baseId = inst.baseId || inst.id; // base id for non-repeating
+    const instanceISO = inst.instanceISO || null;
+    editingMeta = { baseId, instanceISO, isRepeating, originalStartISO: inst.start instanceof Date ? inst.start.toISOString() : inst.start };
+
+    document.getElementById("modal-title-text").textContent = "Edit Event";
+    document.getElementById("modal-title").value   = inst.title;
+    document.getElementById("modal-start").value   = typeof inst.start === "string" ? inst.start : inst.start.toISOString().slice(0,16);
+    document.getElementById("modal-end").value     = typeof inst.end   === "string" ? inst.end   : inst.end.toISOString().slice(0,16);
+    setSelectedCategory(inst.category);
+    document.getElementById("modal-repeat").value  = inst.repeat || "none";
     document.getElementById("modal-delete").style.display = "inline-block";
-  }else{
-    editingId = null;
+  } else {
+    // creating new at dateKey 12-1pm
+    editingMeta = { baseId: null, instanceISO: null, isRepeating: false, originalStartISO: null };
+    document.getElementById("modal-title-text").textContent = "Add Event";
     form.reset();
     const start = `${dateKey}T12:00`;
     const end   = `${dateKey}T13:00`;
@@ -127,27 +298,52 @@ function openModal(event, dateKey){
     document.getElementById("modal-start").value   = start;
     document.getElementById("modal-end").value     = end;
     setSelectedCategory("Personal");
+    document.getElementById("modal-repeat").value  = "none";
     document.getElementById("modal-delete").style.display = "none";
   }
+  refreshRepeatLabels();
 }
+
 function closeModal(){
   modal.style.display = "none";
   modal.setAttribute("aria-hidden","true");
   document.body.classList.remove("modal-open");
   form.reset();
+  editingMeta = null;
 }
+
 document.getElementById("modal-cancel").onclick = ()=>closeModal();
 document.getElementById("modal-backdrop").onclick = ()=>closeModal();
+
 document.getElementById("modal-delete").onclick = ()=>{
-  events = events.filter(e => e.id !== editingId);
+  if(!editingMeta) return;
+  const base = events.find(e => e.id === editingMeta.baseId);
+  if(!base) return closeModal();
+
+  if(base.repeat && base.repeat !== "none"){
+    const future = confirm("Delete this and future occurrences?\n\nOK = this and future\nCancel = only this instance");
+    const instISO = editingMeta.instanceISO || editingMeta.originalStartISO;
+    if(future){
+      // Cut off the series at this instance
+      base.until = instISO; // stop at this occurrence (no future)
+    }else{
+      // Skip only this occurrence
+      base.exDates = base.exDates || [];
+      if(!base.exDates.includes(instISO)) base.exDates.push(instISO);
+    }
+  }else{
+    // Non-repeating: remove base
+    const idx = events.findIndex(e => e.id === base.id);
+    if(idx >= 0) events.splice(idx,1);
+  }
   closeModal();
   renderEvents();
 };
 
-// update accent when user picks a category pill
 document.getElementById("modal-category-group").addEventListener("change", ()=>{
   updateModalAccent(getSelectedCategory());
 });
+document.getElementById("modal-start").addEventListener("change", refreshRepeatLabels);
 
 form.onsubmit = (e)=>{
   e.preventDefault();
@@ -155,25 +351,56 @@ form.onsubmit = (e)=>{
   const start    = document.getElementById("modal-start").value;
   const end      = document.getElementById("modal-end").value;
   const category = getSelectedCategory();
+  const repeat   = document.getElementById("modal-repeat").value || "none";
   if(!title) return;
   if(new Date(end) <= new Date(start)){ alert("End must be after start"); return; }
 
-  if(editingId){
-    const ev = events.find(x => x.id === editingId);
-    Object.assign(ev, {title, start, end, category});
-  }else{
+  if(!editingMeta || !editingMeta.baseId){
+    // Create new base event
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
-    events.push({id, title, start, end, category});
+    events.push({ id, title, start, end, category, repeat, exDates: [] });
+  }else{
+    const base = events.find(e => e.id === editingMeta.baseId);
+    if(!base) return;
+
+    if(base.repeat && base.repeat!=="none"){
+      const future = confirm("Apply changes to this and future occurrences?\n\nOK = this and future\nCancel = only this instance");
+      const instISO = editingMeta.instanceISO || editingMeta.originalStartISO;
+
+      if(future){
+        // Shift series start to this edited instance time; keep duration from new start/end
+        base.title = title;
+        base.category = category;
+        base.repeat = repeat;
+        base.start = start;           // re-anchor series at this edited time
+        base.end   = end;
+        // Clear cut-off if it conflicts
+        if(base.until && new Date(base.until) < new Date(base.start)) base.until = null;
+      }else{
+        // Detach: skip original instance & create a one-off
+        base.exDates = base.exDates || [];
+        if(!base.exDates.includes(instISO)) base.exDates.push(instISO);
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+        events.push({ id, title, start, end, category, repeat: "none" });
+      }
+    }else{
+      // Non-repeating: update base
+      base.title = title;
+      base.category = category;
+      base.repeat = repeat;
+      base.start = start;
+      base.end = end;
+    }
   }
   closeModal();
   renderEvents();
 };
 
-/* ===== Per-day fragments ===== */
-function fragmentsForDay(dayKey, allEvents){
+/* ========= Instances + rendering ========= */
+function fragmentsForDay(dayKey, evs){
   const dayStart = fromKey(dayKey), dayEnd = addDays(dayStart,1);
   const out = [];
-  for(const ev of allEvents){
+  for(const ev of evs){
     const s = new Date(ev.start), e = new Date(ev.end);
     if(e <= dayStart || s >= dayEnd) continue;
     const startMin = Math.max(0, Math.floor((Math.max(s,dayStart) - dayStart)/60000));
@@ -184,12 +411,11 @@ function fragmentsForDay(dayKey, allEvents){
   return out;
 }
 
-/* ===== Overlap roles: primary/full, secondary1 75%@25%, secondary2 50%@50%, 4+ equal ===== */
 function clusterRolesUpTo3(frags){
   const sorted = [...frags].sort((a,b)=>{
     if(a.startMin !== b.startMin) return a.startMin - b.startMin;
     const da=a.endMin-a.startMin, db=b.endMin-b.startMin;
-    return db - da; // longest first
+    return db - da;
   });
   const clusters=[]; let cur=null;
   for(const fr of sorted){
@@ -216,7 +442,6 @@ function clusterRolesUpTo3(frags){
   return map;
 }
 
-/* ===== Build event block ===== */
 function buildBlockFromFragment(fr, dayKey, roleRec){
   const duration = fr.endMin - fr.startMin;
   const heightPx = Math.max(6, duration * MINUTE_PX);
@@ -225,18 +450,18 @@ function buildBlockFromFragment(fr, dayKey, roleRec){
   block.className = `event-block category-${fr.ev.category.toLowerCase()}`;
   block.style.top    = `${fr.startMin*MINUTE_PX}px`;
   block.style.height = `${heightPx}px`;
-  block.dataset.id   = fr.ev.id;
+  block.dataset.id   = fr.ev.id; // instance id below
   block.dataset.day  = dayKey;
   block.dataset.startMin = fr.startMin;
   block.dataset.endMin   = fr.endMin;
-  block.style.zIndex = String(zForDuration(duration)); // shorter on top
+  block.style.zIndex = String(zForDuration(duration));
 
+  // layout width
   const setLW = (leftPct, widthPct)=>{
     block.style.left  = `calc(${leftPct}% + ${EV_GAP_PX}px)`;
     block.style.width = `calc(${widthPct}% - ${EV_GAP_PX*2}px)`;
     block.style.right = "auto";
   };
-
   if(!roleRec || roleRec.role==="primary"){
     block.style.left  = `${EV_GAP_PX}px`;
     block.style.right = `${EV_GAP_PX}px`;
@@ -253,6 +478,12 @@ function buildBlockFromFragment(fr, dayKey, roleRec){
 
   const fragStart = new Date(localStr(dayKey, fr.startMin));
   const fragEnd   = new Date(localStr(dayKey, fr.endMin));
+
+  // For clicks/edits, we need to know baseId + instanceISO if repeating
+  const instanceISO = fragStart.toISOString();
+  const baseId = fr.ev.baseId || fr.ev.id;
+  const repeat = fr.ev.repeat || "none";
+
   const content = document.createElement("div"); content.className="content";
   const titleEl = document.createElement("div"); titleEl.className="title"; titleEl.textContent = fr.ev.title;
   const timeEl  = document.createElement("div"); timeEl.className="time";  timeEl.textContent  = `${hhmm(fragStart)} – ${hhmm(fragEnd)}`;
@@ -265,24 +496,76 @@ function buildBlockFromFragment(fr, dayKey, roleRec){
   applyCompactMode(block);
   new ResizeObserver(()=>applyCompactMode(block)).observe(block);
 
-  block.addEventListener("click", ev => { ev.stopPropagation(); if(!justDragged) openModal(fr.ev, dayKey); });
+  block.addEventListener("click", ev => {
+    ev.stopPropagation();
+    if(justDragged) return;
+    // open modal with instance metadata
+    openModal({
+      id: baseId,               // base id for editing
+      baseId,
+      instanceISO,
+      title: fr.ev.title,
+      category: fr.ev.category,
+      start: fragStart,
+      end: fragEnd,
+      repeat
+    }, dayKey);
+  });
+
+  // Drag move (instance):
   block.addEventListener("pointerdown", ev => {
     const tgt = ev.target;
     if(tgt.classList.contains("resize-top") || tgt.classList.contains("resize-bottom")) return;
     ev.preventDefault(); ev.stopPropagation();
-    startDragMoveFragment(fr, block, dayKey, ev);
+    startDragMoveInstance({ baseId, instanceISO, title: fr.ev.title, category: fr.ev.category, repeat, durationMin: duration }, block, dayKey, ev);
   });
-  rt.addEventListener("pointerdown", ev => { ev.preventDefault(); ev.stopPropagation(); startResizeFragment(fr, block, dayKey, "top", ev); });
-  rb.addEventListener("pointerdown", ev => { ev.preventDefault(); ev.stopPropagation(); startResizeFragment(fr, block, dayKey, "bottom", ev); });
+  rt.addEventListener("pointerdown", ev => { ev.preventDefault(); ev.stopPropagation(); startResizeInstance({ baseId, instanceISO, title: fr.ev.title, category: fr.ev.category, repeat }, block, dayKey, "top", ev); });
+  rb.addEventListener("pointerdown", ev => { ev.preventDefault(); ev.stopPropagation(); startResizeInstance({ baseId, instanceISO, title: fr.ev.title, category: fr.ev.category, repeat }, block, dayKey, "bottom", ev); });
 
   return block;
 }
 
 function renderEvents(){
+  // Build concrete instances for the visible week
+  const rangeStart = startOfDay(currentWeekStart);
+  const rangeEnd   = endOfWeekLocal(currentWeekStart);
+
+  const instances = [];
+  for(const ev of events){
+    if(ev.repeat && ev.repeat!=="none"){
+      for(const inst of expandRepeats(ev, rangeStart, rangeEnd)){
+        instances.push({
+          id: ev.id + "|" + inst.start.toISOString(),
+          baseId: ev.id,
+          title: ev.title,
+          category: ev.category,
+          start: inst.start,
+          end: inst.end,
+          repeat: ev.repeat
+        });
+      }
+    } else {
+      // non-repeating: keep as-is if visible & not in past
+      const s=new Date(ev.start), e=new Date(ev.end);
+      if(e > rangeStart && s < rangeEnd && s >= startOfDay(new Date())){
+        instances.push({
+          id: ev.id,
+          baseId: ev.id,
+          title: ev.title,
+          category: ev.category,
+          start: s, end: e, repeat: "none"
+        });
+      }
+    }
+  }
+
+  // Clear and render per day
   document.querySelectorAll(".event-block").forEach(n=>n.remove());
   document.querySelectorAll(".day-body").forEach(b=>{
     const dayKey = b.dataset.date;
-    const frags = fragmentsForDay(dayKey, events);
+    const dayStart = fromKey(dayKey), dayEnd = addDays(dayStart,1);
+    const todays = instances.filter(x => x.end > dayStart && x.start < dayEnd);
+    const frags = fragmentsForDay(dayKey, todays);
     const roles = clusterRolesUpTo3(frags);
     for(const fr of frags){
       const rec = roles.get(fr.id + ":" + fr.startMin);
@@ -291,7 +574,7 @@ function renderEvents(){
   });
 }
 
-/* ===== Compact sizing ===== */
+/* ========= Compact thresholds ========= */
 function applyCompactMode(block){
   const h = block.getBoundingClientRect().height;
   block.classList.remove("compact","tiny","very-short","micro");
@@ -301,11 +584,14 @@ function applyCompactMode(block){
   else if (h <= 30) block.classList.add("compact");
 }
 
-/* ===== Drag / Resize (pointer capture + local writes) ===== */
-function startDragMoveFragment(fr, block, dayKey, pDown){
+/* ========= Drag/Resize on instances ========= */
+// Dragging a repeating occurrence asks for scope;
+// - Only this instance: detach → add one-off event, add base.exDates to skip original
+// - This and future: shift series anchor to the dropped time
+function startDragMoveInstance(meta, block, dayKey, pDown){
   const startY = pDown.clientY;
   const initTopPx = parseFloat(block.style.top) || 0;
-  const fragDurMin = fr.endMin - fr.startMin;
+  const fragDurMin = parseInt(block.dataset.endMin) - parseInt(block.dataset.startMin);
   let targetBody = block.closest(".day-body");
   let moved=false;
 
@@ -314,6 +600,8 @@ function startDragMoveFragment(fr, block, dayKey, pDown){
   block.setPointerCapture(pDown.pointerId);
   document.body.style.userSelect = "none";
   document.body.style.cursor = "grabbing";
+
+  let curTopMin = Math.round(initTopPx/MINUTE_PX);
 
   let raf=null;
   const onMove = (ev)=>{
@@ -324,6 +612,7 @@ function startDragMoveFragment(fr, block, dayKey, pDown){
         const snapped = Math.round(propMin/SNAP_MIN)*SNAP_MIN;
         const clamped = Math.max(0, Math.min(24*60 - fragDurMin, snapped));
         block.style.top = `${clamped*MINUTE_PX}px`;
+        curTopMin = clamped;
 
         const el = document.elementFromPoint(ev.clientX, ev.clientY);
         const u = el ? (el.closest(".day-body") || targetBody) : targetBody;
@@ -348,13 +637,32 @@ function startDragMoveFragment(fr, block, dayKey, pDown){
 
     if(!moved){ block.style.zIndex=originalZ; justDragged=false; return; }
 
-    const newTopMin = Math.round((parseFloat(block.style.top)||0)/MINUTE_PX);
-    const ev = fr.ev;
-    const duration = (new Date(ev.end) - new Date(ev.start))/60000;
-    ev.start = localStr(targetBody.dataset.date, newTopMin);
-    ev.end   = localStr(targetBody.dataset.date, newTopMin + duration);
+    const newStart = localStr(targetBody.dataset.date, curTopMin);
+    const newEnd   = localStr(targetBody.dataset.date, curTopMin + fragDurMin);
 
-    block.style.zIndex = String(zForDuration(duration));
+    const base = events.find(e => e.id === meta.baseId);
+    if(!base){ justDragged=false; renderEvents(); return; }
+
+    if(base.repeat && base.repeat!=="none"){
+      const future = confirm("Move this and future occurrences?\n\nOK = this and future\nCancel = only this instance");
+      const instISO = meta.instanceISO;
+      if(future){
+        // shift series anchor
+        base.start = newStart;
+        base.end   = newEnd;
+        if(base.until && new Date(base.until) < new Date(base.start)) base.until = null;
+      }else{
+        // detach this instance
+        base.exDates = base.exDates || [];
+        if(!base.exDates.includes(instISO)) base.exDates.push(instISO);
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+        events.push({ id, title: meta.title, start: newStart, end: newEnd, category: meta.category, repeat: "none" });
+      }
+    }else{
+      // non-repeating: just update base
+      base.start = newStart; base.end = newEnd;
+    }
+
     setTimeout(()=>{ justDragged=false; },120);
     renderEvents();
   };
@@ -363,7 +671,7 @@ function startDragMoveFragment(fr, block, dayKey, pDown){
   document.addEventListener("pointerup",   onUp);
 }
 
-function startResizeFragment(fr, block, fixedDayKey, edge, pDown){
+function startResizeInstance(meta, block, fixedDayKey, edge, pDown){
   const startY = pDown.clientY;
   const initTopPx = parseFloat(block.style.top) || 0;
   const initHpx   = parseFloat(block.style.height) || (60*MINUTE_PX);
@@ -371,7 +679,6 @@ function startResizeFragment(fr, block, fixedDayKey, edge, pDown){
   const initDurMin= Math.max(5, Math.round(initHpx/MINUTE_PX));
   let curTop=initTopMin, curDur=initDurMin;
 
-  const originalZ = block.style.zIndex;
   block.style.zIndex = "9999";
   block.setPointerCapture(pDown.pointerId);
   document.body.style.userSelect="none";
@@ -412,18 +719,28 @@ function startResizeFragment(fr, block, fixedDayKey, edge, pDown){
     document.removeEventListener("pointerup",   onUp);
     document.body.style.userSelect=""; document.body.style.cursor="";
 
-    const ev = fr.ev;
-    if(edge==="top"){
-      const newStart = localStr(fixedDayKey, curTop);
-      ev.start = newStart;
-      if(new Date(ev.end) <= new Date(newStart)) ev.end = localStr(fixedDayKey, curTop+5);
-    }else{
-      const newEnd = localStr(fixedDayKey, curTop+curDur);
-      ev.end = newEnd;
-      if(new Date(newEnd) <= new Date(ev.start)) ev.start = localStr(fixedDayKey, curTop+curDur-5);
+    const newStart = localStr(fixedDayKey, curTop);
+    const newEnd   = localStr(fixedDayKey, curTop+curDur);
+    const base = events.find(e => e.id === meta.baseId);
+    if(base){
+      if(base.repeat && base.repeat!=="none"){
+        const future = confirm("Apply duration change to this and future occurrences?\n\nOK = this and future\nCancel = only this instance");
+        const instISO = meta.instanceISO;
+        if(future){
+          base.start = newStart;
+          base.end   = newEnd;
+          if(base.until && new Date(base.until) < new Date(base.start)) base.until = null;
+        }else{
+          base.exDates = base.exDates || [];
+          if(!base.exDates.includes(instISO)) base.exDates.push(instISO);
+          const id = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+          events.push({ id, title: meta.title, start: newStart, end: newEnd, category: meta.category, repeat: "none" });
+        }
+      }else{
+        base.start = newStart; base.end = newEnd;
+      }
     }
-    const newDur = (new Date(ev.end)-new Date(ev.start))/60000;
-    block.style.zIndex = String(zForDuration(newDur));
+
     setTimeout(()=>{ justDragged=false; },120);
     renderEvents();
   };
@@ -432,7 +749,7 @@ function startResizeFragment(fr, block, fixedDayKey, edge, pDown){
   document.addEventListener("pointerup",   onUp);
 }
 
-/* ===== Boot ===== */
+/* ========= Boot ========= */
 document.addEventListener("DOMContentLoaded", ()=>{
   renderWeek();
 
