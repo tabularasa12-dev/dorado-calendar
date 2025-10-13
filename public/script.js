@@ -1,6 +1,7 @@
-// Dorado Calendar — auto theme (system), repeats (future-only), drag/resize, instance/future scope.
-// New events default to Category = School.
+// Dorado Calendar — theme chooser (system/dark/light) with persistence + live OS updates,
+// click-to-toggle 24h/12h times in the left column, repeats (future-only), drag/resize, modal.
 
+// ===== Constants =====
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const HOUR_PX = 40;
 const MINUTE_PX = HOUR_PX / 60;
@@ -10,6 +11,7 @@ const EV_GAP_PX = 6;
 const pad2 = n => String(n).padStart(2,"0");
 const hhmm = d => new Date(d).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
 
+// ===== Date utils =====
 function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
 function addWeeks(d,n){ return addDays(d, n*7); }
 function addMonths(d,n){ const x=new Date(d); const day=x.getDate(); x.setMonth(x.getMonth()+n); if(x.getDate()<day) x.setDate(0); return x; }
@@ -25,26 +27,52 @@ function localStr(key,mins){ const h=Math.floor(mins/60), m=mins%60; return `${k
 
 function zForDuration(mins){ return 1000 + Math.max(1, 1440 - Math.min(1440, Math.round(mins))); }
 
+// ===== State =====
 let currentWeekStart = startOfWeekLocal(new Date());
 let events = [];                 // base events; supports repeat/exDates/until
 let justDragged = false;
 
-/* ========= Auto Theme (system-following, no button) ========= */
+// ===== Theme (system/dark/light) =====
+const THEME_KEY = 'themeMode'; // 'system' | 'dark' | 'light'
 const mqlDark = window.matchMedia('(prefers-color-scheme: dark)');
-function applySystemTheme() {
-  document.documentElement.setAttribute('data-theme', mqlDark.matches ? 'dark' : 'light');
+
+function applyTheme(mode) {
+  if (mode === 'system') {
+    document.documentElement.setAttribute('data-theme', mqlDark.matches ? 'dark' : 'light');
+  } else {
+    document.documentElement.setAttribute('data-theme', mode);
+  }
+  reflectThemeButtons(mode);
+}
+function reflectThemeButtons(mode){
+  document.querySelectorAll('.theme-btn').forEach(btn=>{
+    const choice = btn.getAttribute('data-theme-choice');
+    btn.setAttribute('aria-pressed', choice === mode ? 'true' : 'false');
+  });
+}
+function getThemeMode() { return localStorage.getItem(THEME_KEY) || 'system'; }
+function setThemeMode(mode){
+  if (mode === 'system') localStorage.removeItem(THEME_KEY);
+  else localStorage.setItem(THEME_KEY, mode);
+  applyTheme(mode);
+}
+function wireThemeChooser(){
+  document.querySelectorAll('.theme-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const choice = btn.getAttribute('data-theme-choice');
+      setThemeMode(choice);
+    });
+  });
+  // live-follow system only when in 'system' mode
+  mqlDark.addEventListener('change', ()=>{
+    if (getThemeMode() === 'system') applyTheme('system');
+  });
+  applyTheme(getThemeMode());
 }
 
-/* ========= Repeat helpers ========= */
-function ordinal(n){
-  const s=["th","st","nd","rd"], v=n%100;
-  return n + (s[(v-20)%10] || s[v] || s[0]);
-}
-function nthWeekdayOfMonth(date){
-  const d = new Date(date);
-  const nth = Math.floor((d.getDate()-1)/7) + 1;
-  return { nth, weekday: d.getDay() };
-}
+// ===== Repeat helpers =====
+function ordinal(n){ const s=["th","st","nd","rd"], v=n%100; return n + (s[(v-20)%10] || s[v] || s[0]); }
+function nthWeekdayOfMonth(date){ const d=new Date(date); const nth=Math.floor((d.getDate()-1)/7)+1; return { nth, weekday:d.getDay() }; }
 function weekdayName(i){ return ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][i]; }
 function monthName(i){ return ["January","February","March","April","May","June","July","August","September","October","November","December"][i]; }
 
@@ -169,7 +197,9 @@ function* expandRepeats(ev, rangeStart, rangeEnd){
   }
 }
 
-/* ========= UI frame ========= */
+// ===== Header & time column rendering =====
+let timeFormat = localStorage.getItem('timeFmt') || '24'; // '24' | '12'
+
 function renderWeekHeader(ws){
   const head = document.getElementById("days-head");
   head.innerHTML = "";
@@ -183,16 +213,42 @@ function renderWeekHeader(ws){
     head.appendChild(cell);
   }
 }
+
+function formatHourLabel(h){
+  if (timeFormat === '24') return `${pad2(h)}:00`;
+  // 12h
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:00 ${ampm}`;
+}
+
 function renderTimeCol(){
   const t = document.getElementById("time-body"); t.innerHTML="";
   for(let h=0; h<24; h++){
     const row = document.createElement("div");
     row.className = "tick";
     row.style.height = `${HOUR_PX}px`;
-    row.textContent = `${pad2(h)}:00`;
+    row.textContent = formatHourLabel(h);
+    // Click any time label to toggle 24h/12h
+    row.addEventListener('click', ()=>{
+      timeFormat = timeFormat === '24' ? '12' : '24';
+      localStorage.setItem('timeFmt', timeFormat);
+      renderTimeCol();
+    });
     t.appendChild(row);
   }
+  // Also allow toggling by clicking the spacer label
+  const spacer = document.querySelector('.time-head-spacer');
+  if (spacer && !spacer._wiredToggle) {
+    spacer.addEventListener('click', ()=>{
+      timeFormat = timeFormat === '24' ? '12' : '24';
+      localStorage.setItem('timeFmt', timeFormat);
+      renderTimeCol();
+    });
+    spacer._wiredToggle = true;
+  }
 }
+
 function renderDayBodies(ws){
   const wrap = document.getElementById("days-wrap"); wrap.innerHTML="";
   for(let i=0;i<7;i++){
@@ -210,6 +266,7 @@ function renderDayBodies(ws){
   }
   renderEvents();
 }
+
 function renderWeek(){
   const we = endOfWeekLocal(currentWeekStart);
   document.getElementById("week-label").textContent =
@@ -219,7 +276,7 @@ function renderWeek(){
   renderDayBodies(currentWeekStart);
 }
 
-/* ========= Modal (category pills + repeat select + scope ops) ========= */
+// ===== Modal (category pills + repeat select + scope ops) =====
 const modal = document.getElementById("modal");
 const form  = document.getElementById("modal-form");
 const modalAccent = document.getElementById("modal-accent");
@@ -384,7 +441,7 @@ form.onsubmit = (e)=>{
   renderEvents();
 };
 
-/* ========= Instances + rendering ========= */
+// ===== Instances + rendering =====
 function fragmentsForDay(dayKey, evs){
   const dayStart = fromKey(dayKey), dayEnd = addDays(dayStart,1);
   const out = [];
@@ -552,7 +609,7 @@ function renderEvents(){
   });
 }
 
-/* ========= Compact thresholds ========= */
+// ===== Compact thresholds =====
 function applyCompactMode(block){
   const h = block.getBoundingClientRect().height;
   block.classList.remove("compact","tiny","very-short","micro");
@@ -562,7 +619,7 @@ function applyCompactMode(block){
   else if (h <= 30) block.classList.add("compact");
 }
 
-/* ========= Drag/Resize on instances with scope ========= */
+// ===== Drag/Resize on instances with scope =====
 function startDragMoveInstance(meta, block, dayKey, pDown){
   const startY = pDown.clientY;
   const initTopPx = parseFloat(block.style.top) || 0;
@@ -608,7 +665,7 @@ function startDragMoveInstance(meta, block, dayKey, pDown){
     block.releasePointerCapture(pDown.pointerId);
     document.removeEventListener("pointermove", onMove);
     document.removeEventListener("pointerup",   onUp);
-    document.body.style.userSelect=""; document.body.style.cursor="";
+    document.body.style.userSelect = ""; document.body.style.cursor="";
 
     if(!moved){ block.style.zIndex=originalZ; justDragged=false; return; }
 
@@ -722,12 +779,9 @@ function startResizeInstance(meta, block, fixedDayKey, edge, pDown){
   document.addEventListener("pointerup",   onUp);
 }
 
-/* ========= Boot ========= */
+// ===== Boot =====
 document.addEventListener("DOMContentLoaded", ()=>{
-  // Auto theme: apply once and subscribe to OS changes
-  applySystemTheme();
-  mqlDark.addEventListener('change', applySystemTheme);
-
+  wireThemeChooser();            // theme buttons + OS sync
   renderWeek();
 
   const prev = document.getElementById("prev-week");
@@ -737,7 +791,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
   if(next) next.onclick = ()=>{ currentWeekStart = addDays(currentWeekStart, 7); renderWeek(); };
   if(today) today.onclick= ()=>{ currentWeekStart = startOfWeekLocal(new Date()); renderWeek(); };
 
-  // Optional keyboard shortcuts
+  // Keyboard shortcuts (optional niceties)
   document.addEventListener('keydown', (e) => {
     if (e.target && ['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
     if (e.key === 'ArrowLeft') { currentWeekStart = addDays(currentWeekStart, -7); renderWeek(); }

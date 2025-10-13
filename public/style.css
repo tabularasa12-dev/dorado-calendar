@@ -17,7 +17,6 @@
   --btn-neutral: #e9ecef;
 }
 
-/* Dark variables applied when <html data-theme="dark"> */
 [data-theme="dark"] {
   --bg: #1b1b1b;
   --text: #eee;
@@ -27,10 +26,8 @@
   --btn-neutral: #2a2a2a;
 }
 
-/* Optional: hint native controls to OS preference */
-@media (prefers-color-scheme: dark) {
-  :root { color-scheme: dark; }
-}
+/* Native control hint (optional) */
+@media (prefers-color-scheme: dark) { :root { color-scheme: dark; } }
 
 /* ===== General layout ===== */
 body {
@@ -45,6 +42,7 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 12px 18px;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
@@ -71,6 +69,33 @@ header {
 }
 #controls .nav-btn:hover { border-color: #aaa; }
 #controls .nav-btn:active { transform: translateY(1px); }
+
+/* Theme chooser segmented buttons */
+.theme-chooser {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--btn-neutral);
+  height: 36px;
+}
+.theme-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.theme-btn + .theme-btn { border-left: 1px solid var(--border); }
+.theme-btn[aria-pressed="true"] {
+  background: #d7dbe0;
+  font-weight: 600;
+}
+[data-theme="dark"] .theme-btn[aria-pressed="true"] {
+  background: #3a3a3a;
+}
 
 /* Legend above calendar */
 .legend-bar {
@@ -109,6 +134,7 @@ main {
   font-size: 11px;
   color: #777;
   border-bottom: 1px solid var(--border);
+  user-select: none;
 }
 #time-body .tick {
   border-bottom: 1px solid var(--border);
@@ -120,6 +146,7 @@ main {
   padding-right: 6px;
   font-size: 11px;
   user-select: none;
+  cursor: pointer;        /* so it's obvious you can click to toggle 12/24h */
 }
 
 /* Days area */
@@ -181,7 +208,7 @@ main {
   );
 }
 
-/* ===== Events (smaller text) ===== */
+/* ===== Events ===== */
 .event-block {
   position: absolute;
   border-radius: 4px;
