@@ -1,5 +1,5 @@
-// Dorado Calendar — click-to-create at clicked time, drag snap=15m, cross-day drag/resize,
-// custom confirms, repeats future-only, overlap layout, system dark/light.
+// Dorado Calendar — local datetime inputs (no UTC shift), snap-to-15 drag/resize,
+// custom confirm (red/yellow/gray order), repeats future-only, overlap layout, sticky bars.
 
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const HOUR_PX = 40;
@@ -10,11 +10,15 @@ const EV_GAP_PX = 6;
 const pad2 = n => String(n).padStart(2,"0");
 const hhmm = d => new Date(d).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
 
+// ---- local datetime <-> input helpers (fixes 7h shift) ----
+function toLocalInputValue(dt){
+  const d = new Date(dt);
+  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+function fromLocalInputValue(s){ return new Date(s); } // keep for clarity
+
 // ===== Custom Confirm Utilities =====
-async function showConfirm({ title = "Confirm", message = "", buttons = [
-  { id: "ok", label: "OK", variant: "primary" },
-  { id: "cancel", label: "Cancel", variant: "neutral" }
-]} = {}) {
+async function showConfirm({ title = "Confirm", message = "", buttons = [] } = {}) {
   return new Promise(resolve => {
     const root = document.getElementById("confirm-root");
     const backdrop = document.getElementById("confirm-backdrop");
@@ -32,6 +36,7 @@ async function showConfirm({ title = "Confirm", message = "", buttons = [
       b.className = "btn";
       if (variant === "primary") b.classList.add("btn-primary");
       else if (variant === "danger") b.classList.add("btn-danger");
+      else if (variant === "warning") b.classList.add("btn-warning");
       b.addEventListener("click", () => cleanup(id));
       return b;
     };
@@ -61,15 +66,16 @@ async function askRepeatScope(kind = "edit") {
   const message = isEdit
     ? "Apply changes to this occurrence only, or this and all future occurrences?"
     : "Delete this occurrence only, or this and all future occurrences?";
-  const res = await showConfirm({
+
+  // Order: LEFT red (future), MIDDLE yellow (single), RIGHT gray (cancel)
+  return await showConfirm({
     title, message,
     buttons: [
-      { id: "single", label: "Only this", variant: "neutral" },
-      { id: "future", label: "This & future", variant: "primary" },
-      { id: "cancel", label: "Cancel", variant: "danger" }
+      { id: "future", label: "This & future", variant: "danger" },
+      { id: "single", label: "Only this",     variant: "warning" },
+      { id: "cancel", label: "Cancel",        variant: "neutral" }
     ]
   });
-  return res;
 }
 
 // ===== Date utils =====
@@ -287,15 +293,13 @@ function renderDayBodies(ws){
 
     // CLICK-TO-CREATE at clicked time (snapped to 15)
     body.addEventListener("click",(ev)=>{
-      // ignore clicks that started on an event block
       if (ev.target.closest(".event-block")) return;
-
       const rect = body.getBoundingClientRect();
-      const y = ev.clientY - rect.top;                // px offset inside the day column
+      const y = ev.clientY - rect.top;
       let mins = Math.max(0, Math.min(1439, Math.round(y / MINUTE_PX)));
       mins = Math.round(mins / SNAP_MIN) * SNAP_MIN;  // snap to 15
       const start = localStr(key, mins);
-      const end = localStr(key, Math.min(1439, mins + 60)); // default 60m (clamped to day)
+      const end = localStr(key, Math.min(1439, mins + 60)); // default 60m
       openModal(null, key, { defaultStart: start, defaultEnd: end });
     });
 
@@ -347,8 +351,9 @@ function refreshRepeatLabels(){
   const d = new Date(startVal);
   const nth = Math.floor((d.getDate()-1)/7)+1;
   const weeklyLabel = `Weekly on ${["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][d.getDay()]}`;
-  const monthDayLabel = `Monthly on the ${[,"1st","2nd","3rd"][d.getDate()] || (d.getDate()+"th")}`;
-  const monthNthLabel = `Monthly on the ${[,"1st","2nd","3rd"][nth] || (nth+"th")} ${["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][d.getDay()]}`;
+  const ords = ["","1st","2nd","3rd"];
+  const monthDayLabel = `Monthly on the ${ords[d.getDate()] || (d.getDate()+"th")}`;
+  const monthNthLabel = `Monthly on the ${ords[nth] || (nth+"th")} ${["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][d.getDay()]}`;
   const yearlyLabel = `Yearly on ${["January","February","March","April","May","June","July","August","September","October","November","December"][d.getMonth()]} ${d.getDate()}`;
 
   const rep = document.getElementById("modal-repeat");
@@ -373,12 +378,20 @@ function openModal(instanceOrNull, dateKey, opts={}){
     const inst = instanceOrNull;
     const baseId = inst.baseId || inst.id;
     const instanceISO = inst.instanceISO || null;
-    editingMeta = { baseId, instanceISO, isRepeating: !!(inst.repeat && inst.repeat!=="none"), originalStartISO: inst.start instanceof Date ? inst.start.toISOString() : inst.start };
+    editingMeta = {
+      baseId,
+      instanceISO,
+      isRepeating: !!(inst.repeat && inst.repeat!=="none"),
+      originalStartISO: inst.start instanceof Date ? inst.start.toISOString() : inst.start
+    };
 
     document.getElementById("modal-title-text").textContent = "Edit Event";
     document.getElementById("modal-title").value   = inst.title;
-    document.getElementById("modal-start").value   = typeof inst.start === "string" ? inst.start : inst.start.toISOString().slice(0,16);
-    document.getElementById("modal-end").value     = typeof inst.end   === "string" ? inst.end   : inst.end.toISOString().slice(0,16);
+    // !!! Use local input format (NO toISOString) to avoid timezone shift
+    const sVal = (inst.start instanceof Date) ? toLocalInputValue(inst.start) : inst.start;
+    const eVal = (inst.end   instanceof Date) ? toLocalInputValue(inst.end)   : inst.end;
+    document.getElementById("modal-start").value   = sVal;
+    document.getElementById("modal-end").value     = eVal;
     setSelectedCategory(inst.category);
     document.getElementById("modal-repeat").value  = inst.repeat || "none";
     document.getElementById("modal-delete").style.display = "inline-block";
@@ -430,7 +443,7 @@ document.getElementById("modal-delete").onclick = async () => {
       message: "Are you sure you want to delete this event?",
       buttons: [
         { id: "cancel", label: "Cancel", variant: "neutral" },
-        { id: "ok", label: "Delete", variant: "danger" }
+        { id: "ok",     label: "Delete", variant: "danger" }
       ]
     });
     if (r !== "ok") return;
@@ -551,7 +564,7 @@ function buildBlockFromFragment(fr, dayKey, roleRec){
   block.dataset.day  = dayKey;
   block.dataset.startMin = fr.startMin;
   block.dataset.endMin   = fr.endMin;
-  block.style.zIndex = String(zForDuration(duration)); // base z; header sits above via CSS
+  block.style.zIndex = String(zForDuration(duration));
 
   const setLW = (leftPct, widthPct)=>{
     block.style.left  = `calc(${leftPct}% + ${EV_GAP_PX}px)`;
@@ -606,7 +619,6 @@ function buildBlockFromFragment(fr, dayKey, roleRec){
     }, dayKey);
   });
 
-  // Drag move (instance) — SNAP to 15 during drag
   block.addEventListener("pointerdown", ev => {
     const tgt = ev.target;
     if(tgt.classList.contains("resize-top") || tgt.classList.contains("resize-bottom")) return;
@@ -680,7 +692,7 @@ function startDragMoveInstance(meta, block, dayKey, pDown){
   let moved=false;
 
   const originalZ = block.style.zIndex;
-  block.style.zIndex = "8000"; // keep below sticky header
+  block.style.zIndex = "8000"; // below sticky header
   block.setPointerCapture(pDown.pointerId);
   document.body.style.userSelect = "none";
   document.body.style.cursor = "grabbing";
@@ -788,7 +800,7 @@ function startResizeInstance(meta, block, fixedDayKey, edge, pDown){
   const initDurMin= Math.max(5, Math.round(initHpx/MINUTE_PX));
   let curTop=initTopMin, curDur=initDurMin;
 
-  block.style.zIndex = "8000"; // keep below sticky header
+  block.style.zIndex = "8000"; // below sticky header
   block.setPointerCapture(pDown.pointerId);
   document.body.style.userSelect="none";
   document.body.style.cursor="ns-resize";
@@ -800,7 +812,7 @@ function startResizeInstance(meta, block, fixedDayKey, edge, pDown){
       raf=requestAnimationFrame(()=>{
         if(edge==="top"){
           const nextTop = initTopMin + Math.round(dy/MINUTE_PX);
-          const snappedTop = Math.round(nextTop/SNAP_MIN)*SNAP_MIN; // SNAP
+          const snappedTop = Math.round(nextTop/SNAP_MIN)*SNAP_MIN;
           curTop = snappedTop;
           curDur = Math.max(5, Math.round((initDurMin + (initTopMin - curTop))/SNAP_MIN)*SNAP_MIN);
           const visTop = Math.max(0, Math.min(24*60 - 5, curTop));
@@ -808,12 +820,11 @@ function startResizeInstance(meta, block, fixedDayKey, edge, pDown){
           block.style.height = `${Math.max(5, Math.min(curDur, 24*60))*MINUTE_PX}px`;
         }else{
           const nextDur = initDurMin + Math.round(dy/MINUTE_PX);
-          const snappedDur = Math.round(nextDur/SNAP_MIN)*SNAP_MIN; // SNAP
+          const snappedDur = Math.round(nextDur/SNAP_MIN)*SNAP_MIN;
           curDur = Math.max(5, snappedDur);
           block.style.height = `${Math.min(curDur, 24*60)*MINUTE_PX}px`;
         }
 
-        // live time text
         const baseDay = fromKey(fixedDayKey);
         const startAbs = curTop;
         const endAbs   = curTop + curDur;
