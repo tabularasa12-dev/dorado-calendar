@@ -1,42 +1,47 @@
 :root {
   --bg: #fff;
   --text: #111;
-  --border: #ccc;
+  --border: #cfd6de;
   --hour-h: 40px;
-  --today-accent: #f1c233;
-  --today-bg: rgba(241,194,51,.18);
 
-  --school: #1e88e5;
-  --activities: #e53935;
-  --personal: #43a047;
+  --today-accent: #f1c233;           /* highlight color */
+  --today-bg: rgba(241, 194, 51, .18);
+
+  --school: #1e88e5;                 /* School = blue */
+  --activities: #e53935;             /* Activities = red */
+  --personal: #43a047;               /* Personal = green */
 
   --btn-primary: #1e88e5;
   --btn-primary-hover: #176dc0;
   --btn-danger: #e53935;
   --btn-danger-hover: #c62828;
-  --btn-neutral: #e9ecef;
+  --btn-neutral: #eef1f4;
 }
 
 [data-theme="dark"] {
-  --bg: #1b1b1b;
+  --bg: #151515;
   --text: #eee;
-  --border: #333;
+  --border: #30343a;
+
+  --btn-neutral: #222629;
   --today-accent: #f1c233;
-  --today-bg: rgba(241,194,51,.18);
-  --btn-neutral: #2a2a2a;
+  --today-bg: rgba(241, 194, 51, .20);
 }
 
 @media (prefers-color-scheme: dark) { :root { color-scheme: dark; } }
 
-/* ===== General layout ===== */
+/* ===== Page ===== */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
 body {
   margin: 0;
-  font-family: system-ui, sans-serif;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   overflow-x: hidden;
 }
 
+/* ===== Header ===== */
 header {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -47,12 +52,10 @@ header {
   background: var(--bg);
   position: sticky;
   top: 0;
-  z-index: 20000;   /* ensure header stays above dragged events */
+  z-index: 20000; /* always above events */
 }
 header h1 { margin: 0; font-size: 18px; text-align: center; }
 .header-spacer { min-width: 1px; }
-
-/* Uniform header nav buttons */
 #controls { display: flex; gap: 8px; align-items: center; }
 #controls .nav-btn {
   appearance: none;
@@ -68,10 +71,10 @@ header h1 { margin: 0; font-size: 18px; text-align: center; }
   cursor: pointer;
   transition: background .15s, border-color .15s, transform .02s;
 }
-#controls .nav-btn:hover { border-color: #aaa; }
+#controls .nav-btn:hover { border-color: #aab3bc; }
 #controls .nav-btn:active { transform: translateY(1px); }
 
-/* Legend above calendar */
+/* ===== Legend (above grid) ===== */
 .legend-bar {
   display: flex;
   gap: 16px;
@@ -81,7 +84,7 @@ header h1 { margin: 0; font-size: 18px; text-align: center; }
   background: var(--bg);
   font-size: 12px;
   position: sticky;
-  top: 60px;        /* sits under header; adjust if header height changes */
+  top: 60px;        /* under header */
   z-index: 15000;   /* above events */
 }
 .legend-item { display: flex; align-items: center; gap: 6px; }
@@ -90,14 +93,14 @@ header h1 { margin: 0; font-size: 18px; text-align: center; }
 .legend-activities { background: var(--activities); }
 .legend-personal { background: var(--personal); }
 
-/* ===== Layout frame ===== */
+/* ===== Frame ===== */
 main {
   display: grid;
   grid-template-columns: 70px 1fr;
   height: auto;
 }
 
-/* Time column with top spacer to align with date row */
+/* Time column (left) */
 .time-col {
   border-right: 1px solid var(--border);
   background: var(--bg);
@@ -113,7 +116,7 @@ main {
   border-bottom: 1px solid var(--border);
   user-select: none;
   position: sticky;
-  top: calc(60px + 28px); /* below header+legend-ish */
+  top: calc(60px + 28px); /* under header + aligns with date row */
   background: var(--bg);
   z-index: 14000;
 }
@@ -130,25 +133,33 @@ main {
   cursor: pointer;
 }
 
-/* Days area */
+/* Days area (right) */
 .days {
   display: grid;
   grid-template-rows: 32px auto;
   overflow: visible;
 }
 
-/* Dates row directly above columns — sticky */
+/* ===== Dates row (sticky, with guaranteed divider) ===== */
 .days-head {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   align-items: center;
   background: var(--bg);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);   /* gray divider */
   padding: 0;
   margin: 0;
   position: sticky;
-  top: calc(60px + 28px); /* under header + aligns with time head spacer */
-  z-index: 15000;         /* stay above events while scrolling */
+  top: calc(60px + 28px);                   /* under header & aligned with time spacer */
+  z-index: 15000;                           /* above events */
+}
+.days-head::after {                          /* extra guard line */
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 1px;
+  background: var(--border);
+  pointer-events: none;
 }
 .day-name {
   text-align: center;
@@ -164,7 +175,7 @@ main {
   background: var(--today-bg);
 }
 
-/* 24h grid */
+/* Week grid columns + bodies */
 .days-wrap {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -179,7 +190,7 @@ main {
 }
 .day-body:last-child { border-right: none; }
 
-/* Hour lines */
+/* Hour lines for each day */
 .hour-grid {
   position: absolute;
   inset: 0;
@@ -193,7 +204,7 @@ main {
   );
 }
 
-/* ===== Events ===== */
+/* ===== Event blocks ===== */
 .event-block {
   position: absolute;
   border-radius: 4px;
@@ -203,12 +214,12 @@ main {
   cursor: grab;
   user-select: none;
   touch-action: none;
-  overflow: hidden;
+  overflow: hidden;        /* tuck text inside card */
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
   font-size: 10px;
-  z-index: 100;            /* base — header/legend are higher */
+  z-index: 100;            /* header/legend/dates sit above */
 }
 .event-block .title {
   font-weight: 500;
@@ -224,21 +235,25 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.event-block:hover { box-shadow: 0 0 3px rgba(0,0,0,0.4); }
+.event-block:hover { box-shadow: 0 0 3px rgba(0,0,0,0.35); }
 
-/* Categories */
+/* Category colors */
 .category-school { background: var(--school); }
 .category-activities { background: var(--activities); }
 .category-personal { background: var(--personal); }
 
 /* Resize handles */
 .resize-top, .resize-bottom {
-  position: absolute; left: 0; right: 0; height: 5px; background: transparent; cursor: ns-resize;
+  position: absolute;
+  left: 0; right: 0;
+  height: 5px;
+  background: transparent;
+  cursor: ns-resize;
 }
 .resize-top { top: 0; }
 .resize-bottom { bottom: 0; }
 
-/* Compact thresholds */
+/* Compact thresholds for tiny events (keeps text readable) */
 .event-block.compact .title { font-size: 9px; }
 .event-block.compact .time  { font-size: 8px; }
 .event-block.tiny .title    { font-size: 8px; }
@@ -246,6 +261,23 @@ main {
 .event-block.very-short .title { font-size: 7px; line-height: 1; }
 .event-block.very-short .time  { display: none; }
 .event-block.micro .content { display: none; }
+
+/* During drag/resizes, keep below sticky bars but above other content */
+.event-block.dragging { z-index: 8000; cursor: grabbing; }
+
+/* ===== Cross-day drag “ghost” mirrors ===== */
+.event-ghost {
+  position: absolute;
+  left: 6px; right: 6px;
+  border-radius: 4px;
+  pointer-events: none;
+  opacity: 0.55;
+  mix-blend-mode: normal;
+  z-index: 7000; /* below sticky header; above grid */
+}
+.event-ghost.school     { background: var(--school); }
+.event-ghost.activities { background: var(--activities); }
+.event-ghost.personal   { background: var(--personal); }
 
 /* ===== Modal ===== */
 .modal {
@@ -255,7 +287,7 @@ main {
   grid-template-rows: 1fr auto;
   align-items: center;
   justify-items: center;
-  z-index: 30000;        /* above everything */
+  z-index: 30000;  /* above everything */
 }
 .modal-backdrop {
   position: absolute;
@@ -270,8 +302,8 @@ main {
   border-radius: 12px;
   box-shadow: 0 12px 28px rgba(0,0,0,0.35);
   padding: 22px 28px 24px;
-  min-width: 440px;
-  max-width: 560px;
+  min-width: 460px;
+  max-width: 600px;
   z-index: 30001;
   position: relative;
 }
@@ -300,7 +332,7 @@ main {
   gap: 12px;
 }
 
-/* Category pills */
+/* Category pills in modal */
 .cat-group {
   display: flex;
   gap: 10px;
@@ -329,8 +361,8 @@ main {
 .cat-activities:has(input:checked) { background: var(--activities); color: #fff; border-color: var(--activities); }
 .cat-personal:has(input:checked)   { background: var(--personal);   color: #fff; border-color: var(--personal); }
 
-/* Buttons */
-.actions { margin-top: 6px; display: flex; gap: 10px; }
+/* Modal actions */
+.actions { margin-top: 6px; display: flex; gap: 10px; flex-wrap: wrap; }
 .btn {
   padding: 8px 12px;
   border-radius: 8px;
@@ -339,35 +371,26 @@ main {
   color: var(--text);
   cursor: pointer;
 }
-.btn-primary {
-  background: var(--btn-primary);
-  color: #fff;
-  border-color: var(--btn-primary);
-}
+.btn-primary { background: var(--btn-primary); color: #fff; border-color: var(--btn-primary); }
 .btn-primary:hover { background: var(--btn-primary-hover); border-color: var(--btn-primary-hover); }
-.btn-danger {
-  background: var(--btn-danger);
-  color: #fff;
-  border-color: var(--btn-danger);
-}
+.btn-danger  { background: var(--btn-danger); color: #fff; border-color: var(--btn-danger); }
 .btn-danger:hover { background: var(--btn-danger-hover); border-color: var(--btn-danger-hover); }
+/* Yellow button for "Only this" (custom confirm) */
+.btn-warning { background: #f1c233; border-color: #f1c233; color: #111; }
+.btn-warning:hover { background: #d4a61f; border-color: #d4a61f; color: #111; }
 
-/* Freeze background while modal open */
 body.modal-open { overflow: hidden; }
 body.modal-open .event-block { pointer-events: none; }
 
-/* Scrollbar */
-.days-wrap::-webkit-scrollbar { width: 8px; }
-.days-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-
-/* ===== Custom Confirm ===== */
+/* ===== Custom Confirm (delete/edit repeating) ===== */
 .confirm.hidden { display: none; }
 .confirm {
   position: fixed; inset: 0; z-index: 31000;
   display: grid; place-items: center;
 }
 .confirm-backdrop {
-  position: absolute; inset: 0; background: rgba(0,0,0,.45);
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,.45);
   backdrop-filter: blur(1.5px);
 }
 .confirm-dialog {
@@ -378,7 +401,6 @@ body.modal-open .event-block { pointer-events: none; }
   border-radius: 12px;
   box-shadow: 0 16px 36px rgba(0,0,0,.35);
   padding: 18px 20px 16px;
-  z-index: 31001;
 }
 .confirm-accent {
   position: absolute; top: 0; left: 0; right: 0; height: 5px;
@@ -390,5 +412,9 @@ body.modal-open .event-block { pointer-events: none; }
 .confirm-actions {
   display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;
 }
-.confirm-actions .btn { min-width: 110px; }
+.confirm-actions .btn { min-width: 120px; }
+
+/* ===== Scrollbar (days area) ===== */
+.days-wrap::-webkit-scrollbar { width: 8px; }
+.days-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
