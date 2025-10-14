@@ -1,105 +1,94 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Dorado Calendar</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Week</title>
+  <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
   <header>
-    <div id="controls">
-      <button id="prev-week" class="nav-btn">◀ Prev</button>
-      <button id="today" class="nav-btn">Today</button>
-      <button id="next-week" class="nav-btn">Next ▶</button>
+    <div id="controls" class="controls-left">
+      <button id="prev-week" class="nav-btn" aria-label="Previous week">← Prev</button>
+      <button id="today" class="nav-btn" aria-label="Jump to today">Today</button>
+      <button id="next-week" class="nav-btn" aria-label="Next week">Next →</button>
     </div>
-    <h1 id="week-label">Loading…</h1>
+    <h1 id="week-label" class="week-label" aria-live="polite"></h1>
     <div class="header-spacer"></div>
   </header>
 
-  <!-- Legend ABOVE the calendar -->
-  <div class="legend-bar">
-    <div class="legend-item"><span class="legend-color legend-school"></span> School</div>
-    <div class="legend-item"><span class="legend-color legend-activities"></span> Activities</div>
-    <div class="legend-item"><span class="legend-color legend-personal"></span> Personal</div>
+  <div class="legend-bar" role="navigation" aria-label="Legend">
+    <div class="legend-item"><div class="legend-color legend-school"></div><span>School</span></div>
+    <div class="legend-item"><div class="legend-color legend-activities"></div><span>Activities</span></div>
+    <div class="legend-item"><div class="legend-color legend-personal"></div><span>Personal</span></div>
   </div>
 
   <main>
-    <!-- Time column -->
-    <div class="time-col">
-      <div class="time-head-spacer" title="Click a time to toggle 24h/12h">Time</div>
+    <div class="time-col" aria-hidden="true">
+      <div class="time-head-spacer">Time</div>
       <div id="time-body"></div>
     </div>
 
-    <!-- Dates header directly above the 24h grid -->
-    <section class="days">
-      <div class="days-head" id="days-head"></div>
-      <div class="days-wrap" id="days-wrap"></div>
-    </section>
+    <div class="days">
+      <div id="days-head" class="days-head" role="rowgroup"></div>
+      <div id="days-wrap" class="days-wrap" role="grid" aria-label="Week grid"></div>
+    </div>
   </main>
 
   <!-- Modal -->
-  <div id="modal" class="modal" aria-hidden="true">
-    <div id="modal-backdrop" class="modal-backdrop"></div>
-    <div class="modal-dialog" id="modal-dialog">
-      <div class="modal-accent" id="modal-accent"></div>
-      <h2><span id="modal-title-text">Add Event</span></h2>
+  <div id="modal" class="modal" aria-hidden="true" aria-labelledby="modal-title-text">
+    <div id="modal-backdrop" class="modal-backdrop" aria-hidden="true"></div>
+    <form id="modal-form" class="modal-dialog" autocomplete="off" role="dialog">
+      <div id="modal-accent" class="modal-accent" aria-hidden="true"></div>
+      <h2 id="modal-title-text">Add Event</h2>
 
-      <form id="modal-form">
-        <label>Name</label>
-        <input id="modal-title" type="text" placeholder="Event name" required />
+      <label>
+        <span class="sr-only">Title</span>
+        <input id="modal-title" type="text" placeholder="Event title" required />
+      </label>
 
-        <div class="row">
-          <div>
-            <label>Start</label>
-            <input id="modal-start" type="datetime-local" required />
-          </div>
-          <div>
-            <label>End</label>
-            <input id="modal-end" type="datetime-local" required />
-          </div>
-        </div>
+      <div class="row">
+        <label>
+          <span class="sr-only">Start</span>
+          <input id="modal-start" type="datetime-local" required />
+        </label>
+        <label>
+          <span class="sr-only">End</span>
+          <input id="modal-end" type="datetime-local" required />
+        </label>
+      </div>
 
-        <label>Category</label>
-        <div class="cat-group" id="modal-category-group" role="radiogroup" aria-label="Category">
-          <label class="cat-pill cat-school">
-            <input type="radio" name="modal-cat" value="School"> School
-          </label>
-          <label class="cat-pill cat-activities">
-            <input type="radio" name="modal-cat" value="Activities"> Activities
-          </label>
-          <label class="cat-pill cat-personal">
-            <input type="radio" name="modal-cat" value="Personal"> Personal
-          </label>
-        </div>
+      <div id="modal-category-group" class="cat-group" role="radiogroup" aria-label="Category">
+        <label class="cat-pill cat-school"><input type="radio" name="modal-cat" value="School" checked />School</label>
+        <label class="cat-pill cat-activities"><input type="radio" name="modal-cat" value="Activities" />Activities</label>
+        <label class="cat-pill cat-personal"><input type="radio" name="modal-cat" value="Personal" />Personal</label>
+      </div>
 
-        <label>Repeat</label>
-        <select id="modal-repeat">
-          <option value="none">Does not repeat</option>
-          <option value="daily">Daily</option>
-          <option value="weekly">Weekly on …</option>
-          <option value="monthly_day">Monthly on …</option>
-          <option value="monthly_nth_weekday">Monthly on the … …</option>
-          <option value="yearly">Yearly on …</option>
-        </select>
+      <select id="modal-repeat" aria-label="Repeat">
+        <option value="none">Does not repeat</option>
+        <option value="daily">Daily</option>
+        <option value="weekly">Weekly</option>
+        <option value="monthly_day">Monthly (by day)</option>
+        <option value="monthly_nth_weekday">Monthly (nth weekday)</option>
+        <option value="yearly">Yearly</option>
+      </select>
 
-        <div class="actions">
-          <button type="submit" class="btn btn-primary" id="modal-save">Save</button>
-          <button type="button" class="btn btn-danger" id="modal-delete" style="display:none">Delete</button>
-          <button type="button" class="btn" id="modal-cancel">Cancel</button>
-        </div>
-      </form>
-    </div>
+      <div class="actions">
+        <button id="modal-delete" type="button" class="btn btn-danger" style="display:none;">Delete</button>
+        <button id="modal-cancel" type="button" class="btn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
   </div>
 
-  <!-- Custom confirm / choice dialog -->
+  <!-- Confirm dialog -->
   <div id="confirm-root" class="confirm hidden" aria-hidden="true">
-    <div class="confirm-backdrop" id="confirm-backdrop"></div>
-    <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <div id="confirm-backdrop" class="confirm-backdrop"></div>
+    <div class="confirm-dialog" role="dialog" aria-modal="true">
       <div class="confirm-accent"></div>
-      <h3 class="confirm-title" id="confirm-title">Confirm</h3>
-      <p class="confirm-message" id="confirm-message"></p>
-      <div class="confirm-actions" id="confirm-actions"></div>
+      <div id="confirm-title" class="confirm-title"></div>
+      <div id="confirm-message" class="confirm-message"></div>
+      <div id="confirm-actions" class="confirm-actions"></div>
     </div>
   </div>
 
