@@ -1,7 +1,8 @@
 /* ======================================================================
    Dorado Week — JS
    - Repeats: edit/delete prompts; “This & future” is left-most
-   - NEW: Drag-move & drag-resize on repeating events now ask scope too
+   - Drag-move & drag-resize support vertical/horizontal wrap within week
+   - NEW: Event card time text updates live while dragging/resizing
    - Day names row: gray rule under labels; today underline above
    - Drag/move/resize; solid click hitbox; current-time line; hidden red-hours
    - Auto dark/light (system)
@@ -326,6 +327,14 @@ function clusterRolesUpTo3(frags){
   return map;
 }
 
+/* ---------- Live time label helper ---------- */
+function setBlockTimeRange(block, dayKey, startMin, endMin){
+  const s = new Date(`${dayKey}T${pad2(Math.floor(startMin/60))}:${pad2(startMin%60)}`);
+  const e = new Date(`${dayKey}T${pad2(Math.floor(endMin/60))}:${pad2(endMin%60)}`);
+  const el = block.querySelector(".time");
+  if (el) el.textContent = `${hhmm(s, timeFormat!=="24")} – ${hhmm(e, timeFormat!=="24")}`;
+}
+
 function buildBlockFromFragment(fr, dayKey, roleRec){
   const duration = fr.endMin - fr.startMin;
   const heightPx = Math.max(18, duration * MINUTE_PX);
@@ -443,7 +452,22 @@ function renderEvents(){
   computeActivitiesHoursBeforeNow();
 }
 
-/* ---------- Move (NOW prompts scope for repeats) ---------- */
+/* ---------- Helpers for wrap ---------- */
+function allDayBodies(){
+  return Array.from(document.querySelectorAll(".day-body"));
+}
+function dayBodyAtX(clientX){
+  const days = allDayBodies();
+  for (const d of days){
+    const r = d.getBoundingClientRect();
+    if (clientX >= r.left && clientX <= r.right) return d;
+  }
+  return null;
+}
+function prevDayBody(d){ const days=allDayBodies(); const i=days.indexOf(d); return i>0 ? days[i-1] : null; }
+function nextDayBody(d){ const days=allDayBodies(); const i=days.indexOf(d); return i>=0 && i<days.length-1 ? days[i+1] : null; }
+
+/* ---------- Move (wrap within week + prompts scope for repeats) ---------- */
 async function startDragMoveInstance(meta, block, originDayKey, pDown){
   const durationMin = Number(meta.durationMin ?? (Number(block.dataset.endMin) - Number(block.dataset.startMin))) || 60;
 
@@ -456,22 +480,48 @@ async function startDragMoveInstance(meta, block, originDayKey, pDown){
   let currentParent = block.parentElement;
   let currentTopPx  = parseFloat(block.style.top) || 0;
 
-  function getDayBodyAtPointer(ev){
+  function getDayBodyUnderPointer(ev){
     const el = document.elementFromPoint(ev.clientX, ev.clientY);
-    return el ? el.closest(".day-body") : null;
+    let over = el ? el.closest(".day-body") : null;
+    if (!over) over = dayBodyAtX(ev.clientX); // snap to nearest column by X if we're in the gutter
+    return over;
   }
 
   function pointerMove(ev){
-    const over = getDayBodyAtPointer(ev) || currentParent;
-    const rect = over.getBoundingClientRect();
+    let over = getDayBodyUnderPointer(ev) || currentParent;
+    if (over !== currentParent){
+      currentParent = over;
+      over.appendChild(block);
+    }
+    let rect = over.getBoundingClientRect();
 
+    // Provisional Y relative to the 'over' day
     let y = ev.clientY - rect.top - grabOffsetY;
-    y = clamp(y, 0, over.scrollHeight - 1);
-    const mins = Math.round((y / MINUTE_PX) / SNAP_MIN) * SNAP_MIN;
-    currentTopPx = mins * MINUTE_PX;
 
-    if (over !== currentParent){ currentParent = over; over.appendChild(block); }
+    // Vertical wrap: move across days while y spills out
+    while (y < 0){
+      const prev = prevDayBody(over);
+      if (!prev) break; // week boundary
+      over = prev; currentParent = over; over.appendChild(block);
+      rect = over.getBoundingClientRect();
+      y += rect.height;
+    }
+    while (y > rect.height){
+      const nxt = nextDayBody(over);
+      if (!nxt) break; // week boundary
+      y -= rect.height; over = nxt; currentParent = over; over.appendChild(block);
+      rect = over.getBoundingClientRect();
+    }
+
+    // Snap to grid and apply
+    const mins = Math.round((y / MINUTE_PX) / SNAP_MIN) * SNAP_MIN;
+    const startMin = clamp(mins, 0, 1440 - SNAP_MIN);
+    const endMin = Math.min(1440, startMin + durationMin);
+    currentTopPx = startMin * MINUTE_PX;
     block.style.top = `${currentTopPx}px`;
+
+    // LIVE label update
+    setBlockTimeRange(block, currentParent.dataset.date, startMin, endMin);
   }
 
   async function pointerUp(){
@@ -491,13 +541,12 @@ async function startDragMoveInstance(meta, block, originDayKey, pDown){
     const base = events.find(e => e.id === meta.baseId);
     if (!base){ renderEvents(); return; }
 
-    // NEW: ask scope when moving a repeating instance
+    // Ask scope when moving a repeating instance
     if (base.repeat && base.repeat !== "none" && meta.instanceKey){
       const scope = await askRepeatScope("edit");
       if (scope === "cancel" || scope === "escape"){ renderEvents(); return; }
 
       if (scope === "future"){
-        // Truncate old series at this occurrence, spawn follow-on series with new timing
         base.until = meta.instanceKey;
         const id = Date.now().toString(36)+Math.random().toString(36).slice(2,5);
         events.push({
@@ -510,12 +559,11 @@ async function startDragMoveInstance(meta, block, originDayKey, pDown){
           exDates: [],
           overrides: {}
         });
-      } else { // "single"
+      } else { // "Only this"
         base.overrides = base.overrides || {};
         base.overrides[meta.instanceKey] = { ...(base.overrides[meta.instanceKey]||{}), start: newStartISO, end: newEndISO };
       }
     } else {
-      // Non-repeating or missing key: just move the base
       base.start = newStartISO; base.end = newEndISO;
     }
 
@@ -526,30 +574,67 @@ async function startDragMoveInstance(meta, block, originDayKey, pDown){
   window.addEventListener("pointerup", pointerUp);
 }
 
-/* ---------- Resize (NOW prompts scope for repeats) ---------- */
+/* ---------- Resize (wrap within week + prompts scope for repeats) ---------- */
 async function startResizeInstance(meta, block, dayKey, pDown){
   const anchor = meta.anchor; // "top" or "bottom"
   block.setPointerCapture?.(pDown.pointerId);
   block.classList.add("dragging");
 
+  let currentParent = block.parentElement;
+
   let startTop = parseFloat(block.style.top)||0;
   let startH   = parseFloat(block.style.height)||block.offsetHeight;
 
   function pointerMove(ev){
-    const rect = block.parentElement.getBoundingClientRect();
+    // Snap to a column under pointer X if in gutter
+    const overByX = dayBodyAtX(ev.clientX);
+    if (overByX && overByX !== currentParent){
+      currentParent = overByX;
+      overByX.appendChild(block);
+    }
+    let rect = currentParent.getBoundingClientRect();
+
     let y = ev.clientY - rect.top;
-    y = clamp(y, 0, block.parentElement.scrollHeight-1);
-    const snapMin = Math.round((y / MINUTE_PX) / SNAP_MIN) * SNAP_MIN;
-    const snapY = snapMin * MINUTE_PX;
 
     if (anchor === "top"){
-      const newHeight = clamp(startH + (startTop - snapY), MINUTE_PX*SNAP_MIN, block.parentElement.scrollHeight);
+      // Wrap upwards
+      while (y < 0){
+        const prev = prevDayBody(currentParent);
+        if (!prev) break;
+        currentParent = prev; prev.appendChild(block);
+        rect = currentParent.getBoundingClientRect();
+        y += rect.height;
+        const delta = startTop;
+        startTop = 0;
+        startH += delta;
+      }
+      const snapMin = Math.round((y) / MINUTE_PX / SNAP_MIN) * SNAP_MIN;
+      const snapY = clamp(snapMin, 0, 1440 - SNAP_MIN) * MINUTE_PX;
+
+      const newHeight = clamp(startH + (startTop - snapY), MINUTE_PX*SNAP_MIN, currentParent.scrollHeight);
       block.style.top = `${snapY}px`;
       block.style.height = `${newHeight}px`;
     } else {
-      const newHeight = clamp(snapY - startTop, MINUTE_PX*SNAP_MIN, block.parentElement.scrollHeight);
+      // Wrap downwards
+      while (y > rect.height){
+        const nxt = nextDayBody(currentParent);
+        if (!nxt) break;
+        y -= rect.height; currentParent = nxt; nxt.appendChild(block);
+        rect = currentParent.getBoundingClientRect();
+      }
+      const snapMin = Math.round((y) / MINUTE_PX / SNAP_MIN) * SNAP_MIN;
+      const snapY = clamp(snapMin, 0, 1440) * MINUTE_PX;
+
+      const newHeight = clamp(snapY - startTop, MINUTE_PX*SNAP_MIN, currentParent.scrollHeight);
       block.style.height = `${newHeight}px`;
     }
+
+    // LIVE label update
+    const topPx = parseFloat(block.style.top)||0;
+    const heightPx = parseFloat(block.style.height)||block.offsetHeight;
+    const startMin = clamp(Math.round(topPx / MINUTE_PX), 0, 1440 - SNAP_MIN);
+    const endMin   = clamp(Math.round((topPx + heightPx) / MINUTE_PX), startMin + SNAP_MIN, 1440);
+    setBlockTimeRange(block, currentParent.dataset.date, startMin, endMin);
   }
 
   async function pointerUp(){
@@ -558,6 +643,7 @@ async function startResizeInstance(meta, block, dayKey, pDown){
     window.removeEventListener("pointermove", pointerMove);
     window.removeEventListener("pointerup", pointerUp);
 
+    const finalDayKey = currentParent.dataset.date;
     const topPx = parseFloat(block.style.top)||0;
     const heightPx = parseFloat(block.style.height)||block.offsetHeight;
     let startMin = Math.round((topPx / MINUTE_PX) / SNAP_MIN) * SNAP_MIN;
@@ -565,13 +651,12 @@ async function startResizeInstance(meta, block, dayKey, pDown){
     startMin = clamp(startMin, 0, 1440 - SNAP_MIN);
     endMin   = clamp(endMin, startMin + SNAP_MIN, 1440);
 
-    const newStartISO = `${dayKey}T${pad2(Math.floor(startMin/60))}:${pad2(startMin%60)}`;
-    const newEndISO   = `${dayKey}T${pad2(Math.floor(endMin/60))}:${pad2(endMin%60)}`;
+    const newStartISO = `${finalDayKey}T${pad2(Math.floor(startMin/60))}:${pad2(startMin%60)}`;
+    const newEndISO   = `${finalDayKey}T${pad2(Math.floor(endMin/60))}:${pad2(endMin%60)}`;
 
     const base = events.find(e => e.id === meta.baseId);
     if (!base){ renderEvents(); return; }
 
-    // NEW: ask scope when resizing a repeating instance
     if (base.repeat && base.repeat !== "none" && meta.instanceKey){
       const scope = await askRepeatScope("edit");
       if (scope === "cancel" || scope === "escape"){ renderEvents(); return; }
@@ -579,7 +664,6 @@ async function startResizeInstance(meta, block, dayKey, pDown){
       if (scope === "future"){
         base.until = meta.instanceKey;
         const id = Date.now().toString(36)+Math.random().toString(36).slice(2,5);
-        // follow-on series inherits timing from this resize
         events.push({
           id,
           title: base.title,
@@ -590,7 +674,7 @@ async function startResizeInstance(meta, block, dayKey, pDown){
           exDates: [],
           overrides: {}
         });
-      } else { // "single"
+      } else { // "Only this"
         base.overrides = base.overrides || {};
         base.overrides[meta.instanceKey] = { ...(base.overrides[meta.instanceKey]||{}), start: newStartISO, end: newEndISO };
       }
@@ -759,11 +843,10 @@ form.onsubmit = async (e)=>{
       if (scope === "cancel" || scope === "escape"){ closeModal(); return; }
 
       if (scope === "future"){
-        // Truncate series at this occurrence, then create a new follow-on series
         base.until = editingMeta.instanceKey;
         const id = Date.now().toString(36)+Math.random().toString(36).slice(2,5);
         events.push({ id, title, start, end, category, repeat, exDates: [], overrides: {} });
-      } else { // "Only this" — store as per-instance override
+      } else { // "Only this" — per-instance override
         base.overrides = base.overrides || {};
         base.overrides[editingMeta.instanceKey] = { start, end, title, category };
       }
