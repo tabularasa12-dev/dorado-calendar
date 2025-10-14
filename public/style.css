@@ -1,9 +1,8 @@
 /* ========================================================================
    Dorado Week — CSS
-   - Supports automatic dark/light via prefers-color-scheme
-   - Manual override remains available with [data-theme="dark"]
-   - Dates row: gray line under, today’s yellow underline above it
-   - Current-time line (f1c233)
+   - Auto dark/light via prefers-color-scheme (and optional [data-theme="dark"])
+   - Day names row: gray rule UNDER; today’s yellow underline ABOVE the rule
+   - Large event hitbox; current-time line (f1c233)
    ======================================================================== */
 
 :root{
@@ -132,11 +131,14 @@ main{ display:grid; grid-template-columns:70px 1fr; height:auto; }
 /* Dates row + days grid */
 .days{ display:grid; grid-template-rows:32px auto; overflow:visible; }
 
-/* Dates header with gray rule underneath; today's yellow underline above it */
+/* Day names header with GRAY RULE underneath; today's yellow underline above it */
 .days-head{
-  position:sticky; top:calc(60px + 28px); z-index:15000;
+  position:sticky;
+  top:calc(60px + 28px);
+  z-index:15000;
   display:grid; grid-template-columns:repeat(7,1fr); align-items:center;
-  background:var(--bg); border-bottom:0;
+  background:var(--bg);
+  isolation:isolate; /* create stacking context so ::after sits behind labels */
 }
 .days-head::after{
   content:""; position:absolute; left:0; right:0; bottom:0;
@@ -226,6 +228,7 @@ main{ display:grid; grid-template-columns:70px 1fr; height:auto; }
   width:100%; padding:8px 10px; margin:6px 0 12px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text);
 }
 .row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
 .cat-group{ display:flex; gap:10px; flex-wrap:wrap; margin:6px 0 14px; }
 .cat-pill{
   display:inline-flex; align-items:center; gap:8px;
@@ -245,7 +248,7 @@ main{ display:grid; grid-template-columns:70px 1fr; height:auto; }
 .btn-primary{ background:var(--btn-primary); color:#fff; border-color:var(--btn-primary); }
 .btn-primary:hover{ background:var(--btn-primary-hover); border-color:var(--btn-primary-hover); }
 .btn-danger{ background:var(--btn-danger); color:#fff; border-color:var(--btn-danger); }
-.btn-danger:hover{ background:var(--btn-danger-hover); border-color:var(--btn-danger-hover); }
+.btn-danger:hover{ background:var(--btn-danger-hover); }
 .btn-warning{ background:#f1c233; border-color:#f1c233; color:#111; }
 .btn-warning:hover{ background:#d4a61f; border-color:#d4a61f; color:#111; }
 

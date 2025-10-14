@@ -1,9 +1,10 @@
 /* ======================================================================
    Dorado Week — JS
-   - Auto dark/light restored (media + JS listeners w/ fallback)
-   - Dates row gray line + today underline
-   - Repeats tied forever via exDates/overrides
-   - Drag/move/resize; robust click hitbox; current-time line; hidden red-hours
+   - Repeats: edit/delete prompts; “This & future” is left-most
+   - NEW: Drag-move & drag-resize on repeating events now ask scope too
+   - Day names row: gray rule under labels; today underline above
+   - Drag/move/resize; solid click hitbox; current-time line; hidden red-hours
+   - Auto dark/light (system)
    ====================================================================== */
 
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -33,16 +34,14 @@ function applySystemTheme(){
   if (mqlDark && mqlDark.matches){
     document.documentElement.setAttribute("data-theme", "dark");
   } else {
-    // Remove attribute so media query controls light/dark automatically
     document.documentElement.removeAttribute("data-theme");
   }
 }
-// Wire both modern and legacy listeners
 function wireThemeListener(){
   if (!mqlDark) return;
   if (typeof mqlDark.addEventListener === "function"){
     mqlDark.addEventListener("change", applySystemTheme);
-  } else if (typeof mqlDark.addListener === "function"){ // Safari/old Chrome
+  } else if (typeof mqlDark.addListener === "function"){
     mqlDark.addListener(applySystemTheme);
   }
 }
@@ -85,11 +84,9 @@ function computeActivitiesHoursBeforeNow(){
   const todayKey = dateKeyLocal(new Date());
   const todayCol = document.querySelector(`.day-body[data-date="${todayKey}"]`);
   let totalMinutes = 0;
-
   if (todayCol){
     const nowTop = minutesSinceMidnight() * MINUTE_PX;
     const reds = todayCol.querySelectorAll(".event-block.category-activities");
-
     reds.forEach(el=>{
       const top = parseFloat(el.style.top||'0');
       const height = parseFloat(el.style.height||el.offsetHeight||0);
@@ -116,9 +113,9 @@ function nthDowOfMonth(y,m,dow,nth,h,mi){
   return dt.getMonth() === m ? dt : null;
 }
 
-/* Build a single instance with exDates/overrides */
+/* Build a single instance with exDates/overrides using stable base instanceKey */
 function buildInstanceForRange(ev, instStart, dur, rangeStart, rangeEnd){
-  const instKey = new Date(instStart).toISOString();
+  const instKey = new Date(instStart).toISOString(); // series base key
   const ex = new Set(ev.exDates || []);
   if (ex.has(instKey)) return null;
 
@@ -258,6 +255,7 @@ function renderDayBodies(ws){
     grid.className = "hour-grid";
     body.appendChild(grid);
 
+    // Create by clicking empty space
     body.addEventListener("click", (ev)=>{
       if (ev.target.closest(".event-block")) return;
       const rect = body.getBoundingClientRect();
@@ -355,7 +353,7 @@ function buildBlockFromFragment(fr, dayKey, roleRec){
 
   const fragStart = new Date(`${dayKey}T${pad2(Math.floor(fr.startMin/60))}:${pad2(fr.startMin%60)}`);
   const fragEnd   = new Date(`${dayKey}T${pad2(Math.floor(fr.endMin/60))}:${pad2(fr.endMin%60)}`);
-  const instanceKey = block.dataset.instanceKey || fragStart.toISOString();
+  const instanceKey = block.dataset.instanceKey || null;
   const baseId = fr.ev.baseId;
   const repeat = fr.ev.repeat || "none";
 
@@ -423,7 +421,7 @@ function renderEvents(){
         start: inst.start,
         end: inst.end,
         repeat: ev.repeat,
-        instanceKey: inst.instanceKey || inst.start.toISOString()
+        instanceKey: inst.instanceKey || null
       });
     }
   }
@@ -445,7 +443,7 @@ function renderEvents(){
   computeActivitiesHoursBeforeNow();
 }
 
-/* ---------- Drag/move keeps series with overrides ---------- */
+/* ---------- Move (NOW prompts scope for repeats) ---------- */
 async function startDragMoveInstance(meta, block, originDayKey, pDown){
   const durationMin = Number(meta.durationMin ?? (Number(block.dataset.endMin) - Number(block.dataset.startMin))) || 60;
 
@@ -493,11 +491,31 @@ async function startDragMoveInstance(meta, block, originDayKey, pDown){
     const base = events.find(e => e.id === meta.baseId);
     if (!base){ renderEvents(); return; }
 
-    if (base.repeat && base.repeat !== "none"){
-      base.overrides = base.overrides || {};
-      const instKey = meta.instanceKey;
-      base.overrides[instKey] = { ...(base.overrides[instKey]||{}), start: newStartISO, end: newEndISO };
+    // NEW: ask scope when moving a repeating instance
+    if (base.repeat && base.repeat !== "none" && meta.instanceKey){
+      const scope = await askRepeatScope("edit");
+      if (scope === "cancel" || scope === "escape"){ renderEvents(); return; }
+
+      if (scope === "future"){
+        // Truncate old series at this occurrence, spawn follow-on series with new timing
+        base.until = meta.instanceKey;
+        const id = Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+        events.push({
+          id,
+          title: base.title,
+          category: base.category,
+          start: newStartISO,
+          end: newEndISO,
+          repeat: base.repeat,
+          exDates: [],
+          overrides: {}
+        });
+      } else { // "single"
+        base.overrides = base.overrides || {};
+        base.overrides[meta.instanceKey] = { ...(base.overrides[meta.instanceKey]||{}), start: newStartISO, end: newEndISO };
+      }
     } else {
+      // Non-repeating or missing key: just move the base
       base.start = newStartISO; base.end = newEndISO;
     }
 
@@ -508,9 +526,9 @@ async function startDragMoveInstance(meta, block, originDayKey, pDown){
   window.addEventListener("pointerup", pointerUp);
 }
 
-/* ---------- Resize keeps series with overrides ---------- */
+/* ---------- Resize (NOW prompts scope for repeats) ---------- */
 async function startResizeInstance(meta, block, dayKey, pDown){
-  const anchor = meta.anchor;
+  const anchor = meta.anchor; // "top" or "bottom"
   block.setPointerCapture?.(pDown.pointerId);
   block.classList.add("dragging");
 
@@ -553,10 +571,29 @@ async function startResizeInstance(meta, block, dayKey, pDown){
     const base = events.find(e => e.id === meta.baseId);
     if (!base){ renderEvents(); return; }
 
-    if (base.repeat && base.repeat !== "none"){
-      base.overrides = base.overrides || {};
-      const instKey = meta.instanceKey;
-      base.overrides[instKey] = { ...(base.overrides[instKey]||{}), start: newStartISO, end: newEndISO };
+    // NEW: ask scope when resizing a repeating instance
+    if (base.repeat && base.repeat !== "none" && meta.instanceKey){
+      const scope = await askRepeatScope("edit");
+      if (scope === "cancel" || scope === "escape"){ renderEvents(); return; }
+
+      if (scope === "future"){
+        base.until = meta.instanceKey;
+        const id = Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+        // follow-on series inherits timing from this resize
+        events.push({
+          id,
+          title: base.title,
+          category: base.category,
+          start: newStartISO,
+          end: newEndISO,
+          repeat: base.repeat,
+          exDates: [],
+          overrides: {}
+        });
+      } else { // "single"
+        base.overrides = base.overrides || {};
+        base.overrides[meta.instanceKey] = { ...(base.overrides[meta.instanceKey]||{}), start: newStartISO, end: newEndISO };
+      }
     } else {
       base.start = newStartISO; base.end = newEndISO;
     }
@@ -620,11 +657,10 @@ function openModal(instanceOrNull, dateKey, opts={}){
   if (instanceOrNull){
     const inst = instanceOrNull;
     const baseId = inst.baseId || inst.id;
-    const instanceKey = inst.instanceKey || null;
+    const instanceKey = inst.instanceKey || null; // IMPORTANT: true base key
     editingMeta = {
       baseId, instanceKey,
-      isRepeating: !!(inst.repeat && inst.repeat !== "none"),
-      originalStartISO: inst.start instanceof Date ? inst.start.toISOString() : inst.start
+      isRepeating: !!(inst.repeat && inst.repeat !== "none")
     };
     document.getElementById("modal-title-text").textContent = "Edit Event";
     document.getElementById("modal-title").value = inst.title;
@@ -634,7 +670,7 @@ function openModal(instanceOrNull, dateKey, opts={}){
     document.getElementById("modal-repeat").value = inst.repeat || "none";
     document.getElementById("modal-delete").style.display = "inline-block";
   } else {
-    editingMeta = { baseId:null, instanceKey:null, isRepeating:false, originalStartISO:null };
+    editingMeta = { baseId:null, instanceKey:null, isRepeating:false };
     document.getElementById("modal-title-text").textContent = "Add Event";
     form.reset();
     const start = opts.defaultStart || `${dateKey}T12:00`;
@@ -662,17 +698,19 @@ document.getElementById("modal-backdrop").onclick = ()=> closeModal();
 document.getElementById("modal-category-group").addEventListener("change", ()=> updateModalAccent(getSelectedCategory()));
 document.getElementById("modal-start").addEventListener("change", refreshRepeatLabels);
 
+/* Delete with scope for repeating events */
 document.getElementById("modal-delete").onclick = async ()=>{
   if (!editingMeta) return;
   const base = events.find(e => e.id === editingMeta.baseId);
   if (!base) return closeModal();
 
-  if (base.repeat && base.repeat !== "none"){
+  if (base.repeat && base.repeat !== "none" && editingMeta.instanceKey){
     const scope = await askRepeatScope("delete");
     if (scope === "cancel" || scope === "escape") return;
-    const instKey = editingMeta.instanceKey || editingMeta.originalStartISO;
+    const instKey = editingMeta.instanceKey;
+
     if (scope === "future"){
-      base.until = instKey;
+      base.until = instKey; // stop series at this occurrence (keeps chain)
     } else if (scope === "single"){
       base.exDates = base.exDates || [];
       if (!base.exDates.includes(instKey)) base.exDates.push(instKey);
@@ -696,6 +734,7 @@ document.getElementById("modal-delete").onclick = async ()=>{
   renderEvents();
 };
 
+/* Save — prompt scope when editing a repeating event (modal flow) */
 form.onsubmit = async (e)=>{
   e.preventDefault();
   const title = document.getElementById("modal-title").value.trim();
@@ -715,18 +754,18 @@ form.onsubmit = async (e)=>{
     const base = events.find(e => e.id === editingMeta.baseId);
     if (!base) { closeModal(); return; }
 
-    if (base.repeat && base.repeat !== "none"){
+    if (base.repeat && base.repeat !== "none" && editingMeta.instanceKey){
       const scope = await askRepeatScope("edit");
       if (scope === "cancel" || scope === "escape"){ closeModal(); return; }
-      const instKey = editingMeta.instanceKey || editingMeta.originalStartISO;
 
       if (scope === "future"){
-        base.until = instKey;
+        // Truncate series at this occurrence, then create a new follow-on series
+        base.until = editingMeta.instanceKey;
         const id = Date.now().toString(36)+Math.random().toString(36).slice(2,5);
         events.push({ id, title, start, end, category, repeat, exDates: [], overrides: {} });
-      } else { // single override
+      } else { // "Only this" — store as per-instance override
         base.overrides = base.overrides || {};
-        base.overrides[instKey] = { start, end, title, category };
+        base.overrides[editingMeta.instanceKey] = { start, end, title, category };
       }
     } else {
       base.title = title; base.category = category; base.repeat = repeat;
@@ -763,15 +802,17 @@ async function showConfirm({ title="Confirm", message="", buttons=[] } = {}){
     document.addEventListener("keydown",key); backdrop.onclick=()=>done("cancel");
   });
 }
+
+/* Ask scope when editing/deleting repeats — “This & future” first (left-most) */
 async function askRepeatScope(kind="edit"){
   const title = kind==="edit" ? "Edit repeating event" : "Delete repeating event";
   const message = kind==="edit"
-    ? "Apply to only this occurrence, or this and all future occurrences?"
-    : "Delete only this occurrence, or this and all future occurrences?";
+    ? "Apply changes to this and all future occurrences, or only this occurrence?"
+    : "Delete this and all future occurrences, or only this occurrence?";
   return await showConfirm({
     title, message,
     buttons: [
-      { id:"future", label:"This & future", variant:"danger" },
+      { id:"future", label:"This & future", variant:"danger"  }, // left-most
       { id:"single", label:"Only this",     variant:"warning" },
       { id:"cancel", label:"Cancel",        variant:"neutral" }
     ]
@@ -793,6 +834,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
   applySystemTheme();
   wireThemeListener();
 
+  // controls
   const prev = document.getElementById("prev-week");
   const next = document.getElementById("next-week");
   const today= document.getElementById("today");
@@ -800,6 +842,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
   if (next)  next.onclick  = ()=>{ currentWeekStart = addDays(currentWeekStart,  7); renderWeek(); };
   if (today) today.onclick = ()=>{ currentWeekStart = startOfWeekLocal(new Date()); renderWeek(); };
 
+  // shortcuts
   document.addEventListener("keydown",(e)=>{
     if (e.target && ["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)) return;
     if (e.key === "ArrowLeft")  { currentWeekStart = addDays(currentWeekStart,-7); renderWeek(); }
@@ -810,6 +853,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
   renderWeek();
 
+  // keep now-line & hidden hours fresh
   setInterval(()=>{ renderCurrentTimeLine(); computeActivitiesHoursBeforeNow(); }, 60000);
   document.addEventListener("visibilitychange", ()=>{ if(!document.hidden){ renderCurrentTimeLine(); computeActivitiesHoursBeforeNow(); }});
 });
