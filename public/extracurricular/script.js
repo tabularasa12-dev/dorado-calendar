@@ -3,7 +3,7 @@ const state = {
   weeks: [],
   completed: {},          // event completion by id
   goalsDone: {            // monthly/yearly bold toggles
-    monthly: {},
+    monthly: {},          // keyed by "YYYY-MM:text"
     longterm: {}
   }
 };
@@ -28,8 +28,10 @@ function pickTodayWeekKey(){
   d.setDate(d.getDate()-day); d.setHours(0,0,0,0);
   return d.toISOString().slice(0,10);
 }
+function yyyymm(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"); }
+function monthLabel(d){ return d.toLocaleString(undefined, { month:"long", year:"numeric" }); }
 
-/* ---------- Event Element ---------- */
+/* ---------- Calendar (center) ---------- */
 function makeEventEl(evt){
   const tpl = document.getElementById("tplEvent");
   const node = tpl.content.firstElementChild.cloneNode(true);
@@ -39,7 +41,6 @@ function makeEventEl(evt){
   if(evt.cat) node.dataset.cat = evt.cat;
   if(evt.variant) node.dataset.variant = evt.variant;
 
-  // Restore persisted completion
   if(state.completed[evt.id]) node.classList.add("done");
 
   node.addEventListener("click", ()=>{
@@ -50,7 +51,6 @@ function makeEventEl(evt){
   return node;
 }
 
-/* ---------- Render Calendar ---------- */
 function renderWeekRow(week){
   const row = document.createElement("div");
   row.className = "week-row";
@@ -82,7 +82,8 @@ function renderWeeks(){
   state.weeks.forEach(w => vp.appendChild(renderWeekRow(w)));
 }
 
-/* ---------- Goals (Monthly + Yearly) ---------- */
+/* ---------- Monthly Goals (left) ---------- */
+
 function inferCatVariant(text){
   const t = (text||"").toLowerCase();
   if(/ap\b|advanced placement/.test(t)) return {cat:"ap", variant:"work"};
@@ -96,14 +97,115 @@ function inferCatVariant(text){
   return {cat:"app", variant:"work"};
 }
 
-function renderGoalList(hostEl, items, bucket){
-  if(!hostEl) return;
-  hostEl.innerHTML = "";
+/* Generate months from now until May 2027 with random-ish goals */
+function generateMonthlyGoals(fromDate, toYear=2027, toMonth=5){
+  const out = [];
+  const d = new Date(fromDate.getFullYear(), fromDate.getMonth(), 1, 0,0,0,0);
+  const end = new Date(toYear, toMonth-1, 1);
+
+  const templates = [
+    {t:"AP study block x3", cat:"ap", variant:"work"},
+    {t:"Complete SAT practice set", cat:"test", variant:"work"},
+    {t:"Volunteer 4 hours", cat:"vol", variant:"work"},
+    {t:"Polish Common App essay draft", cat:"app", variant:"work"},
+    {t:"Club event planning checkpoint", cat:"biz", variant:"work"},
+    {t:"Competition registration deadline", cat:"biz", variant:"deadline"},
+    {t:"Internship outreach (5 emails)", cat:"intern", variant:"work"},
+    {t:"Dorado feature sprint", cat:"dorado", variant:"work"},
+    {t:"Supplemental essay outline", cat:"app", variant:"work"},
+    {t:"Practice exam due", cat:"test", variant:"deadline"}
+  ];
+
+  function pick(n){
+    const arr = [];
+    const used = new Set();
+    while(arr.length<n){
+      const i = Math.floor(Math.random()*templates.length);
+      if(used.has(i)) continue;
+      used.add(i); arr.push(templates[i]);
+    }
+    return arr;
+  }
+
+  while(d <= end){
+    const label = monthLabel(d);
+    const key = yyyymm(d);
+    const picks = pick(3); // 3 goals per month
+    out.push({
+      ym: key,
+      label,
+      items: picks.map(p => ({ text: p.t, cat: p.cat, variant: p.variant }))
+    });
+    d.setMonth(d.getMonth()+1);
+  }
+  return out;
+}
+
+function renderMonthlyGoals(){
+  const host = document.getElementById("monthlyGoals");
+  if(!host) return;
+
+  // If you later define MONTHLY_GOALS_BY_MONTH in seed-data.js, we’ll use it;
+  // otherwise generate from now through May 2027.
+  let blocks = (typeof MONTHLY_GOALS_BY_MONTH !== "undefined" && Array.isArray(MONTHLY_GOALS_BY_MONTH))
+    ? MONTHLY_GOALS_BY_MONTH
+    : generateMonthlyGoals(new Date(), 2027, 5);
+
+  host.innerHTML = "";
+  blocks.forEach(block=>{
+    const wrap = document.createElement("div");
+    wrap.className = "mmonth";
+
+    const h = document.createElement("h3");
+    h.className = "month-hdr";
+    h.textContent = block.label;
+    wrap.appendChild(h);
+
+    (block.items||[]).forEach(item=>{
+      const row = document.createElement("div");
+      row.className = "mgoal";
+      row.dataset.cat = item.cat || inferCatVariant(item.text).cat;
+      row.dataset.variant = item.variant || inferCatVariant(item.text).variant;
+
+      const txt = document.createElement("span");
+      txt.className = "g-text";
+      txt.textContent = item.text || "";
+      row.appendChild(txt);
+
+      const key = `${block.ym}:${item.text}`;
+      if(state.goalsDone.monthly[key]) row.classList.add("done");
+
+      row.addEventListener("click", ()=>{
+        const cur = !!state.goalsDone.monthly[key];
+        state.goalsDone.monthly[key] = !cur;
+        row.classList.toggle("done", !cur);
+        save();
+      });
+
+      wrap.appendChild(row);
+    });
+
+    host.appendChild(wrap);
+  });
+}
+
+/* ---------- Yearly Guide (right) ---------- */
+function renderGuide(){
+  const host = document.getElementById("guideList");
+  if(!host) return;
+  host.innerHTML = "";
+
+  const items = (typeof LONGTERM_GOALS !== "undefined") ? LONGTERM_GOALS : [
+    "Submit 3 competition entries",
+    "Secure internship lead",
+    "Reach 1450+ SAT practice average",
+    "Ship 2 Dorado features"
+  ];
 
   const list = document.createElement("div");
   list.className = "goal-list";
 
-  (items || []).forEach(txt=>{
+  items.forEach(txt=>{
     const key = String(txt||"").trim();
     const {cat, variant} = inferCatVariant(key);
 
@@ -114,18 +216,18 @@ function renderGoalList(hostEl, items, bucket){
 
     const sw = document.createElement("span");
     sw.className = "g-swatch";
-    const text = document.createElement("span");
-    text.className = "g-text";
-    text.textContent = key;
+    const t = document.createElement("span");
+    t.className = "g-text";
+    t.textContent = key;
 
     row.appendChild(sw);
-    row.appendChild(text);
+    row.appendChild(t);
 
-    if(state.goalsDone[bucket][key]) row.classList.add("done");
+    if(state.goalsDone.longterm[key]) row.classList.add("done");
 
     row.addEventListener("click", ()=>{
-      const cur = !!state.goalsDone[bucket][key];
-      state.goalsDone[bucket][key] = !cur;
+      const cur = !!state.goalsDone.longterm[key];
+      state.goalsDone.longterm[key] = !cur;
       row.classList.toggle("done", !cur);
       save();
     });
@@ -133,23 +235,13 @@ function renderGoalList(hostEl, items, bucket){
     list.appendChild(row);
   });
 
-  hostEl.appendChild(list);
-}
-
-function renderMonthlyGoals(){
-  const host = document.getElementById("monthlyGoals");
-  if(typeof MONTHLY_GOALS === "undefined") return;
-  renderGoalList(host, MONTHLY_GOALS, "monthly");
-}
-
-function renderGuide(){
-  const host = document.getElementById("guideList");
-  if(typeof LONGTERM_GOALS === "undefined") return;
-  renderGoalList(host, LONGTERM_GOALS, "longterm");
+  host.appendChild(list);
 }
 
 /* ---------- All ---------- */
 function renderAll(){
+  // Calendar weeks rely on SEED_WEEKS (seed-data.js)
+  if(typeof SEED_WEEKS !== "undefined") state.weeks = SEED_WEEKS;
   renderWeeks();
   renderMonthlyGoals();
   renderGuide();
@@ -183,10 +275,6 @@ function attachEvents(){
 /* ---------- Boot ---------- */
 function boot(){
   load();
-  // Seed
-  if(typeof SEED_WEEKS !== "undefined") state.weeks = SEED_WEEKS;
-  else state.weeks = []; // if missing, render empty
-
   renderAll();
   attachEvents();
 }

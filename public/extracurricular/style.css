@@ -101,7 +101,7 @@ button.ghost{background:transparent}
 .hdr-week{font-weight:800; color:var(--text)}
 .hdr-day{font-weight:700; color:var(--text); text-align:left}
 
-/* Weeks viewport scrolls (prevents huge empty page space) */
+/* Weeks viewport */
 .weeks-viewport{
   overflow-y:auto; max-height:70vh; padding:8px;
 }
@@ -189,32 +189,70 @@ button.ghost{background:transparent}
 .legend .swatch.app-prep{background:var(--app-prep)}
 .legend .swatch.app-due{background:var(--app-due)}
 
-/* Goals (Monthly + Yearly) */
-.goal-list{display:grid; gap:8px; margin-top:8px}
-.goal{
-  display:flex; align-items:center; gap:10px;
-  border:1px solid var(--grid); background:var(--card); border-radius:10px;
-  padding:8px; cursor:pointer; user-select:none;
-}
-.goal .g-swatch{
-  width:14px; height:14px; border-radius:4px; border:1px solid var(--grid); flex:0 0 auto;
-}
-.goal .g-text{flex:1}
-.goal.done .g-text{font-weight:800}
 
-/* Goal color mapping via data attributes */
-.goal[data-cat="ap"][data-variant="work"] .g-swatch{background:var(--ap-work)}
-.goal[data-cat="ap"][data-variant="deadline"] .g-swatch{background:var(--ap-deadline)}
-.goal[data-cat="vol"][data-variant="work"] .g-swatch{background:var(--vol-work)}
-.goal[data-cat="vol"][data-variant="deadline"] .g-swatch{background:var(--vol-deadline)}
-.goal[data-cat="intern"][data-variant="work"] .g-swatch{background:var(--intern-work)}
-.goal[data-cat="intern"][data-variant="deadline"] .g-swatch{background:var(--intern-deadline)}
-.goal[data-cat="app"][data-variant="work"] .g-swatch{background:var(--app-work)}
-.goal[data-cat="app"][data-variant="deadline"] .g-swatch{background:var(--app-deadline)}
-.goal[data-cat="test"][data-variant="work"] .g-swatch{background:var(--test-work)}
-.goal[data-cat="test"][data-variant="deadline"] .g-swatch{background:var(--test-deadline)}
-.goal[data-cat="biz"][data-variant="work"] .g-swatch{background:var(--biz-work)}
-.goal[data-cat="biz"][data-variant="deadline"] .g-swatch{background:var(--biz-deadline)}
-.goal[data-cat="dorado"][data-variant="work"] .g-swatch{background:var(--dorado-work)}
-.goal[data-cat="dorado"][data-variant="deadline"] .g-swatch{background:var(--dorado-deadline)}
+/* ===========================
+   Monthly Goals (scrollable)
+   =========================== */
+
+/* scroll the monthly goals column itself */
+#monthlyGoals{
+  max-height:70vh;
+  overflow-y:auto;
+  padding-right:4px;
+}
+
+/* month section */
+.mmonth{ margin-bottom:12px; }
+
+/* sticky month header inside the scroll area */
+.mmonth .month-hdr{
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel);
+  color: var(--text);
+  border-bottom: 1px solid var(--grid);
+  padding: 6px 4px;
+  margin: 0 0 6px 0;
+  font-weight: 800;
+  border-radius: 6px;
+}
+
+/* filled goal cards (like events) */
+.mgoal{
+  border-radius:8px;
+  padding:4px 6px;
+  border:1px solid color-mix(in oklab, var(--grid) 70%, transparent);
+  background:#141a2b;           /* overridden by data-cat/variant below */
+  color:#000 !important;
+  height:26px;
+  display:flex;
+  align-items:center;
+  overflow:hidden;
+  cursor:pointer;
+  user-select:none;
+  margin-bottom:6px;
+  font-size:12px;
+}
+.mgoal .g-text{
+  flex:1; white-space:nowrap; overflow:hidden; text-overflow:clip;
+  color:#000 !important;
+}
+.mgoal.done .g-text{ font-weight:800; }
+
+/* color mapping for monthly goal cards */
+.mgoal[data-cat="dorado"][data-variant="work"]{background:var(--dorado-work)}
+.mgoal[data-cat="dorado"][data-variant="deadline"]{background:var(--dorado-deadline)}
+.mgoal[data-cat="vol"][data-variant="work"]{background:var(--vol-work)}
+.mgoal[data-cat="vol"][data-variant="deadline"]{background:var(--vol-deadline)}
+.mgoal[data-cat="ap"][data-variant="work"]{background:var(--ap-work)}
+.mgoal[data-cat="ap"][data-variant="deadline"]{background:var(--ap-deadline)}
+.mgoal[data-cat="biz"][data-variant="work"]{background:var(--biz-work)}
+.mgoal[data-cat="biz"][data-variant="deadline"]{background:var(--biz-deadline)}
+.mgoal[data-cat="app"][data-variant="work"]{background:var(--app-work)}
+.mgoal[data-cat="app"][data-variant="deadline"]{background:var(--app-deadline)}
+.mgoal[data-cat="intern"][data-variant="work"]{background:var(--intern-work)}
+.mgoal[data-cat="intern"][data-variant="deadline"]{background:var(--intern-deadline)}
+.mgoal[data-cat="test"][data-variant="work"]{background:var(--test-work)}
+.mgoal[data-cat="test"][data-variant="deadline"]{background:var(--test-deadline)}
 
