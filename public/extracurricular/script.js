@@ -5,7 +5,8 @@ const state = {
   goalsDone: {            // monthly/yearly bold toggles
     monthly: {},          // keyed by "YYYY-MM:text"
     longterm: {}
-  }
+  },
+  monthlyCustom: {}       // { ym: [ {text,cat,variant} ] }
 };
 
 function load(){
@@ -13,12 +14,14 @@ function load(){
     const raw = JSON.parse(localStorage.getItem("xc_state")||"{}");
     if(raw.completed) state.completed = raw.completed;
     if(raw.goalsDone) state.goalsDone = raw.goalsDone;
+    if(raw.monthlyCustom) state.monthlyCustom = raw.monthlyCustom;
   }catch(e){}
 }
 function save(){
   localStorage.setItem("xc_state", JSON.stringify({
     completed: state.completed,
-    goalsDone: state.goalsDone
+    goalsDone: state.goalsDone,
+    monthlyCustom: state.monthlyCustom
   }));
 }
 
@@ -78,11 +81,27 @@ function renderWeekRow(week){
 
 function renderWeeks(){
   const vp = document.getElementById("weeksViewport");
+  if(!vp) return;
   vp.innerHTML = "";
   state.weeks.forEach(w => vp.appendChild(renderWeekRow(w)));
 }
 
-/* ---------- Monthly Goals (left) ---------- */
+/* ---------- Category mapping (guide + goals) ---------- */
+const CATEGORY_OPTIONS = [
+  {label:"AP Studying", cat:"ap", variant:"work"},
+  {label:"AP Test", cat:"ap", variant:"deadline"},
+  {label:"Club/Project Work", cat:"biz", variant:"work"},
+  {label:"Competition Due", cat:"biz", variant:"deadline"},
+  {label:"Volunteering", cat:"vol", variant:"work"},
+  {label:"Volunteer Check", cat:"vol", variant:"deadline"},
+  {label:"SAT Study", cat:"test", variant:"work"},
+  {label:"SAT/Test Due", cat:"test", variant:"deadline"},
+  {label:"Intern Work", cat:"intern", variant:"work"},
+  {label:"Intern Due", cat:"intern", variant:"deadline"},
+  {label:"Application Prep", cat:"app", variant:"work"},
+  {label:"Application Due", cat:"app", variant:"deadline"},
+  {label:"Dorado Work", cat:"dorado", variant:"work"},
+];
 
 function inferCatVariant(text){
   const t = (text||"").toLowerCase();
@@ -97,7 +116,7 @@ function inferCatVariant(text){
   return {cat:"app", variant:"work"};
 }
 
-/* Generate months from now until May 2027 with random-ish goals */
+/* ---------- Monthly Goals (left) ---------- */
 function generateMonthlyGoals(fromDate, toYear=2027, toMonth=5){
   const out = [];
   const d = new Date(fromDate.getFullYear(), fromDate.getMonth(), 1, 0,0,0,0);
@@ -117,8 +136,7 @@ function generateMonthlyGoals(fromDate, toYear=2027, toMonth=5){
   ];
 
   function pick(n){
-    const arr = [];
-    const used = new Set();
+    const arr = []; const used = new Set();
     while(arr.length<n){
       const i = Math.floor(Math.random()*templates.length);
       if(used.has(i)) continue;
@@ -130,7 +148,7 @@ function generateMonthlyGoals(fromDate, toYear=2027, toMonth=5){
   while(d <= end){
     const label = monthLabel(d);
     const key = yyyymm(d);
-    const picks = pick(3); // 3 goals per month
+    const picks = pick(3);
     out.push({
       ym: key,
       label,
@@ -141,31 +159,40 @@ function generateMonthlyGoals(fromDate, toYear=2027, toMonth=5){
   return out;
 }
 
+let MONTH_BLOCKS = [];
+
 function renderMonthlyGoals(){
   const host = document.getElementById("monthlyGoals");
   if(!host) return;
 
-  // If you later define MONTHLY_GOALS_BY_MONTH in seed-data.js, we’ll use it;
-  // otherwise generate from now through May 2027.
-  let blocks = (typeof MONTHLY_GOALS_BY_MONTH !== "undefined" && Array.isArray(MONTHLY_GOALS_BY_MONTH))
-    ? MONTHLY_GOALS_BY_MONTH
-    : generateMonthlyGoals(new Date(), 2027, 5);
+  if(!MONTH_BLOCKS.length){
+    MONTH_BLOCKS = (typeof MONTHLY_GOALS_BY_MONTH !== "undefined" && Array.isArray(MONTHLY_GOALS_BY_MONTH))
+      ? MONTHLY_GOALS_BY_MONTH
+      : generateMonthlyGoals(new Date(), 2027, 5);
+  }
 
   host.innerHTML = "";
-  blocks.forEach(block=>{
+
+  MONTH_BLOCKS.forEach(block=>{
     const wrap = document.createElement("div");
     wrap.className = "mmonth";
+    wrap.dataset.ym = block.ym;
 
     const h = document.createElement("h3");
     h.className = "month-hdr";
     h.textContent = block.label;
     wrap.appendChild(h);
 
-    (block.items||[]).forEach(item=>{
+    // defaults + custom
+    const custom = state.monthlyCustom[block.ym] || [];
+    const items = [...(block.items||[]), ...custom];
+
+    items.forEach(item=>{
       const row = document.createElement("div");
       row.className = "mgoal";
-      row.dataset.cat = item.cat || inferCatVariant(item.text).cat;
-      row.dataset.variant = item.variant || inferCatVariant(item.text).variant;
+      const cat = item.cat || inferCatVariant(item.text).cat;
+      const variant = item.variant || inferCatVariant(item.text).variant;
+      row.dataset.cat = cat; row.dataset.variant = variant;
 
       const txt = document.createElement("span");
       txt.className = "g-text";
@@ -184,6 +211,13 @@ function renderMonthlyGoals(){
 
       wrap.appendChild(row);
     });
+
+    // Add card (white)
+    const addCard = document.createElement("div");
+    addCard.className = "mgoal add";
+    addCard.innerHTML = `<span class="plus">＋</span><span class="g-text">Add</span>`;
+    addCard.addEventListener("click", ()=> openAddModal(block.ym));
+    wrap.appendChild(addCard);
 
     host.appendChild(wrap);
   });
@@ -211,8 +245,7 @@ function renderGuide(){
 
     const row = document.createElement("div");
     row.className = "goal";
-    row.dataset.cat = cat;
-    row.dataset.variant = variant;
+    row.dataset.cat = cat; row.dataset.variant = variant;
 
     const sw = document.createElement("span");
     sw.className = "g-swatch";
@@ -220,8 +253,7 @@ function renderGuide(){
     t.className = "g-text";
     t.textContent = key;
 
-    row.appendChild(sw);
-    row.appendChild(t);
+    row.appendChild(sw); row.appendChild(t);
 
     if(state.goalsDone.longterm[key]) row.classList.add("done");
 
@@ -238,9 +270,154 @@ function renderGuide(){
   host.appendChild(list);
 }
 
+/* ---------- Add Goal Modal + Custom Dropdown ---------- */
+let modal, nameInput, catSelectEl, catTrigger, catMenu, preview, saveBtn, cancelBtn;
+let pendingYM = null;
+let currentCat = "app";
+let currentVariant = "work";
+
+function buildCatMenu(){
+  catMenu.innerHTML = "";
+  CATEGORY_OPTIONS.forEach((opt, idx)=>{
+    const item = document.createElement("div");
+    item.className = "cat-option";
+    item.setAttribute("role","option");
+    item.setAttribute("data-cat", opt.cat);
+    item.setAttribute("data-variant", opt.variant);
+    item.setAttribute("data-index", String(idx));
+    item.innerHTML = `<span class="swatch" aria-hidden="true"></span><span class="label">${opt.label}</span>`;
+    item.addEventListener("click", ()=>{
+      selectCategory(opt.cat, opt.variant, opt.label);
+      closeMenu();
+      updatePreview();
+    });
+    catMenu.appendChild(item);
+  });
+}
+
+function selectCategory(cat, variant, labelText){
+  currentCat = cat; currentVariant = variant;
+  const container = document.getElementById("goalCategory");
+  container.dataset.cat = cat; container.dataset.variant = variant;
+  catTrigger.querySelector(".label").textContent = labelText;
+}
+
+function openMenu(){
+  catMenu.classList.add("open");
+  document.getElementById("goalCategory").setAttribute("aria-expanded","true");
+  catMenu.focus();
+}
+function closeMenu(){
+  catMenu.classList.remove("open");
+  document.getElementById("goalCategory").setAttribute("aria-expanded","false");
+}
+
+function toggleMenu(){
+  if(catMenu.classList.contains("open")) closeMenu(); else openMenu();
+}
+
+function updatePreview(){
+  preview.dataset.cat = currentCat;
+  preview.dataset.variant = currentVariant;
+  preview.querySelector(".g-text").textContent = nameInput.value || "Your goal";
+}
+
+function ensureModal(){
+  if(modal) return;
+  modal = document.getElementById("goalModal");
+  nameInput = document.getElementById("goalNameInput");
+  preview = document.getElementById("goalPreview");
+  saveBtn = document.getElementById("goalSaveBtn");
+  cancelBtn = document.getElementById("goalCancelBtn");
+
+  // custom dropdown elements
+  catSelectEl = document.getElementById("goalCategory");
+  catTrigger = document.getElementById("catTrigger");
+  catMenu = document.getElementById("catMenu");
+
+  buildCatMenu();
+  selectCategory("app", "work", "Application Prep");
+
+  catTrigger.addEventListener("click", toggleMenu);
+  // Close on backdrop click or Escape
+  modal.querySelector(".modal-backdrop").addEventListener("click", ()=>{
+    // If menu open, close menu first
+    if(catMenu.classList.contains("open")) closeMenu(); else {
+      modal.classList.add("hidden"); modal.setAttribute("aria-hidden","true"); pendingYM = null;
+    }
+  });
+  document.addEventListener("keydown", (e)=>{
+    if(modal.classList.contains("hidden")) return;
+    if(e.key === "Escape"){
+      if(catMenu.classList.contains("open")) closeMenu();
+      else { modal.classList.add("hidden"); modal.setAttribute("aria-hidden","true"); pendingYM = null; }
+    }
+  });
+
+  // Keyboard nav inside menu (basic)
+  catMenu.addEventListener("keydown", (e)=>{
+    const items = Array.from(catMenu.querySelectorAll(".cat-option"));
+    const active = document.activeElement;
+    let idx = items.indexOf(active);
+    if(e.key === "ArrowDown"){
+      e.preventDefault();
+      const next = items[Math.min(items.length-1, idx+1)] || items[0];
+      next.focus();
+    }else if(e.key === "ArrowUp"){
+      e.preventDefault();
+      const prev = items[Math.max(0, idx-1)] || items[items.length-1];
+      prev.focus();
+    }else if(e.key === "Enter"){
+      e.preventDefault();
+      active?.click();
+    }else if(e.key === "Tab"){
+      // close when tabbing out
+      closeMenu();
+    }
+  });
+
+  nameInput.addEventListener("input", updatePreview);
+
+  cancelBtn.addEventListener("click", ()=>{
+    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden","true");
+    pendingYM = null;
+  });
+
+  saveBtn.addEventListener("click", ()=>{
+    const name = (nameInput.value||"").trim();
+    if(!name) { nameInput.focus(); return; }
+    const ym = pendingYM;
+    if(!ym) return;
+
+    if(!state.monthlyCustom[ym]) state.monthlyCustom[ym] = [];
+    state.monthlyCustom[ym].push({ text: name, cat: currentCat, variant: currentVariant });
+    save();
+
+    renderMonthlyGoals(); // refresh only left column
+
+    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden","true");
+    pendingYM = null;
+  });
+}
+
+function openAddModal(ym){
+  ensureModal();
+  pendingYM = ym;
+
+  // defaults
+  nameInput.value = "";
+  selectCategory("app", "work", "Application Prep");
+  updatePreview();
+
+  modal.classList.remove("hidden");
+  modal.removeAttribute("aria-hidden");
+  nameInput.focus();
+}
+
 /* ---------- All ---------- */
 function renderAll(){
-  // Calendar weeks rely on SEED_WEEKS (seed-data.js)
   if(typeof SEED_WEEKS !== "undefined") state.weeks = SEED_WEEKS;
   renderWeeks();
   renderMonthlyGoals();
@@ -252,24 +429,22 @@ function attachEvents(){
   const btnToday = document.getElementById("btnJumpToday");
   const btnReset = document.getElementById("btnResetDone");
 
-  if(btnToday){
-    btnToday.addEventListener("click", ()=>{
-      const vp = document.getElementById("weeksViewport");
-      const todayKey = pickTodayWeekKey();
-      const idx = state.weeks.findIndex(w => w.weekKey === todayKey);
-      if(idx>=0){ vp.children[idx]?.scrollIntoView({block:"center"}); }
-    });
-  }
-  if(btnReset){
-    btnReset.addEventListener("click", ()=>{
-      if(confirm("Clear all completions (events + goals)?")){
-        state.completed = {};
-        state.goalsDone = {monthly:{}, longterm:{}};
-        save();
-        renderAll();
-      }
-    });
-  }
+  btnToday?.addEventListener("click", ()=>{
+    const vp = document.getElementById("weeksViewport");
+    const todayKey = pickTodayWeekKey();
+    const idx = state.weeks.findIndex(w => w.weekKey === todayKey);
+    if(idx>=0){ vp.children[idx]?.scrollIntoView({block:"center"}); }
+  });
+
+  btnReset?.addEventListener("click", ()=>{
+    if(confirm("Clear all completions (events + goals)?")){
+      state.completed = {};
+      state.goalsDone = {monthly:{}, longterm:{}};
+      state.monthlyCustom = {};
+      save();
+      renderAll();
+    }
+  });
 }
 
 /* ---------- Boot ---------- */
@@ -278,6 +453,5 @@ function boot(){
   renderAll();
   attachEvents();
 }
-
 document.addEventListener("DOMContentLoaded", boot);
 

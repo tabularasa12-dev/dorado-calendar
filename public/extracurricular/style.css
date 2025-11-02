@@ -1,8 +1,6 @@
 /* ===========================
    System Theming (Dark/Light)
    =========================== */
-
-/* Defaults = Dark theme */
 :root{
   --bg:#0b0c10;
   --panel:#12141a;
@@ -33,7 +31,6 @@
   --app-prep:#9aa0a6;
   --app-due:#4b4f57;
 }
-
 @media (prefers-color-scheme: light){
   :root{
     --bg:#f6f7fb;
@@ -47,13 +44,12 @@
     --shadow:0 6px 18px rgba(0,0,0,.12);
   }
 }
-
 *{box-sizing:border-box}
 html,body{height:100%}
 body{
   margin:0; background:var(--bg); color:var(--text);
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
-  font-size:12px; /* global matches event text */
+  font-size:12px;
 }
 
 /* Header */
@@ -71,14 +67,12 @@ button{
 }
 button.ghost{background:transparent}
 
-/* Main layout */
+/* Layout */
 .layout{
   display:grid;
   grid-template-columns: 300px 1fr 220px;
   gap:12px; padding:12px;
 }
-
-/* Rails */
 .rail{
   background:var(--panel); border:1px solid var(--grid); border-radius:14px; padding:12px;
   box-shadow: var(--shadow);
@@ -91,10 +85,10 @@ button.ghost{background:transparent}
   display:flex; flex-direction:column; min-height:0;
 }
 
-/* Days header */
+/* Day header row */
 .header-grid{
   display:grid;
-  grid-template-columns: 120px repeat(7, 1fr); /* narrower Week column per request */
+  grid-template-columns: 120px repeat(7, 1fr); /* narrower dates column */
   gap:8px; padding:8px; border-bottom:1px solid var(--grid); background:var(--header);
   position:sticky; top:60px; z-index:2;
 }
@@ -105,22 +99,16 @@ button.ghost{background:transparent}
 .weeks-viewport{
   overflow-y:auto; max-height:70vh; padding:8px;
 }
-
-/* Week row layout */
 .week-row{
   display:grid;
   grid-template-columns: 120px repeat(7, 1fr);
   gap:8px; margin-bottom:8px;
 }
-
-/* Week label (left sticky cell) */
 .week-label{
   background:var(--week-label-bg); border:1px solid var(--grid); border-radius:10px; padding:8px;
   position:sticky; left:8px; z-index:1;
   color:var(--text); font-weight:700;
 }
-
-/* Day cells */
 .day-cell{
   background:var(--card); border:1px solid var(--grid); border-radius:10px;
   padding:8px; min-height:120px;
@@ -129,29 +117,16 @@ button.ghost{background:transparent}
 
 /* Event cards */
 .event{
-  border-radius:8px;
-  padding:4px 6px;
+  border-radius:8px; padding:4px 6px;
   border:1px solid color-mix(in oklab, var(--grid) 70%, transparent);
-  background:#141a2b;             /* base; category fill overrides below */
-  cursor:pointer;
-  color:#000 !important;
-  height:26px;                     /* fixed height */
-  display:flex;
-  align-items:center;
-  overflow:hidden;                 /* hide overflow like Google Sheets */
-  font-size:12px;
+  background:#141a2b; cursor:pointer; color:#000 !important;
+  height:26px; display:flex; align-items:center; overflow:hidden; font-size:12px;
 }
 .event .evt-text{
-  flex:1;
-  overflow:hidden;
-  white-space:nowrap;
-  text-overflow:clip;
-  color:#000 !important;
+  flex:1; overflow:hidden; white-space:nowrap; text-overflow:clip; color:#000 !important;
 }
 .event.done .evt-text{font-weight:800}
 .event.done{outline:2px solid color-mix(in oklab, var(--grid) 70%, transparent)}
-
-/* Category fills for event cards */
 .event[data-cat="dorado"][data-variant="work"]{background:var(--dorado-work)}
 .event[data-cat="dorado"][data-variant="deadline"]{background:var(--dorado-deadline)}
 .event[data-cat="vol"][data-variant="work"]{background:var(--vol-work)}
@@ -189,58 +164,28 @@ button.ghost{background:transparent}
 .legend .swatch.app-prep{background:var(--app-prep)}
 .legend .swatch.app-due{background:var(--app-due)}
 
-
 /* ===========================
    Monthly Goals (scrollable)
    =========================== */
-
-/* scroll the monthly goals column itself */
-#monthlyGoals{
-  max-height:70vh;
-  overflow-y:auto;
-  padding-right:4px;
-}
-
-/* month section */
+#monthlyGoals{ max-height:70vh; overflow-y:auto; padding-right:4px; }
 .mmonth{ margin-bottom:12px; }
-
-/* sticky month header inside the scroll area */
 .mmonth .month-hdr{
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--panel);
-  color: var(--text);
+  position: sticky; top: 0; z-index: 1;
+  background: var(--panel); color: var(--text);
   border-bottom: 1px solid var(--grid);
-  padding: 6px 4px;
-  margin: 0 0 6px 0;
-  font-weight: 800;
-  border-radius: 6px;
+  padding: 6px 4px; margin: 0 0 6px 0;
+  font-weight: 800; border-radius: 6px;
 }
-
-/* filled goal cards (like events) */
+/* filled monthly goal cards */
 .mgoal{
-  border-radius:8px;
-  padding:4px 6px;
+  border-radius:8px; padding:4px 6px;
   border:1px solid color-mix(in oklab, var(--grid) 70%, transparent);
-  background:#141a2b;           /* overridden by data-cat/variant below */
-  color:#000 !important;
-  height:26px;
-  display:flex;
-  align-items:center;
-  overflow:hidden;
-  cursor:pointer;
-  user-select:none;
-  margin-bottom:6px;
-  font-size:12px;
+  background:#141a2b; color:#000 !important;
+  height:26px; display:flex; align-items:center; overflow:hidden;
+  cursor:pointer; user-select:none; margin-bottom:6px; font-size:12px;
 }
-.mgoal .g-text{
-  flex:1; white-space:nowrap; overflow:hidden; text-overflow:clip;
-  color:#000 !important;
-}
+.mgoal .g-text{ flex:1; white-space:nowrap; overflow:hidden; text-overflow:clip; color:#000 !important; }
 .mgoal.done .g-text{ font-weight:800; }
-
-/* color mapping for monthly goal cards */
 .mgoal[data-cat="dorado"][data-variant="work"]{background:var(--dorado-work)}
 .mgoal[data-cat="dorado"][data-variant="deadline"]{background:var(--dorado-deadline)}
 .mgoal[data-cat="vol"][data-variant="work"]{background:var(--vol-work)}
@@ -255,4 +200,93 @@ button.ghost{background:transparent}
 .mgoal[data-cat="intern"][data-variant="deadline"]{background:var(--intern-deadline)}
 .mgoal[data-cat="test"][data-variant="work"]{background:var(--test-work)}
 .mgoal[data-cat="test"][data-variant="deadline"]{background:var(--test-deadline)}
+
+/* Add-card under each month */
+.mgoal.add{
+  background:#ffffff !important; color:#000 !important;
+  border:1px dashed var(--grid); display:flex; align-items:center; gap:8px;
+  justify-content:center; font-weight:700;
+}
+.mgoal.add .plus{ font-size:16px; font-weight:900; }
+
+/* Modal */
+.modal.hidden{ display:none; }
+.modal{ position:fixed; inset:0; z-index:1000; }
+.modal-backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.4); }
+.modal-panel{
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:min(520px, calc(100vw - 32px));
+  background:var(--panel); color:var(--text);
+  border:1px solid var(--grid); border-radius:12px; box-shadow:var(--shadow);
+  padding:16px;
+}
+.modal-panel h3{ margin:0 0 12px 0; }
+.form-row{ display:grid; grid-template-columns: 90px 1fr; align-items:center; gap:10px; margin:10px 0; }
+.form-row input{
+  background:var(--card); color:var(--text); border:1px solid var(--grid);
+  border-radius:8px; padding:8px;
+}
+.preview-row{ display:grid; grid-template-columns: 90px 1fr; align-items:center; gap:10px; margin:12px 0; }
+.modal-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+
+/* ---- Custom Colorized Dropdown ---- */
+.cat-select{ position:relative; }
+.cat-trigger{
+  width:100%; display:flex; align-items:center; gap:8px;
+  background:var(--card); color:var(--text);
+  border:1px solid var(--grid); border-radius:8px; padding:8px;
+}
+.cat-trigger .swatch{
+  width:14px; height:14px; border-radius:4px; border:1px solid var(--grid);
+  background:var(--app-work);
+}
+.cat-trigger .label{ flex:1; text-align:left; }
+.cat-trigger .chev{ opacity:.8; }
+
+.cat-menu{
+  position:absolute; left:0; right:0; top:calc(100% + 6px);
+  background:var(--panel); border:1px solid var(--grid); border-radius:10px;
+  box-shadow:var(--shadow); max-height:260px; overflow:auto; padding:6px;
+  display:none;
+}
+.cat-menu.open{ display:block; }
+.cat-option{
+  display:flex; align-items:center; gap:8px;
+  padding:6px; border-radius:8px; cursor:pointer; user-select:none;
+  border:1px solid transparent;
+}
+.cat-option:hover{ border-color:var(--grid); background:color-mix(in oklab, var(--panel) 92%, white 8%); }
+.cat-option .swatch{
+  width:14px; height:14px; border-radius:4px; border:1px solid var(--grid);
+}
+
+/* swatch colors for options */
+.cat-option[data-cat="ap"][data-variant="work"] .swatch{ background:var(--ap-work); }
+.cat-option[data-cat="ap"][data-variant="deadline"] .swatch{ background:var(--ap-deadline); }
+.cat-option[data-cat="biz"][data-variant="work"] .swatch{ background:var(--biz-work); }
+.cat-option[data-cat="biz"][data-variant="deadline"] .swatch{ background:var(--biz-deadline); }
+.cat-option[data-cat="vol"][data-variant="work"] .swatch{ background:var(--vol-work); }
+.cat-option[data-cat="vol"][data-variant="deadline"] .swatch{ background:var(--vol-deadline); }
+.cat-option[data-cat="test"][data-variant="work"] .swatch{ background:var(--test-work); }
+.cat-option[data-cat="test"][data-variant="deadline"] .swatch{ background:var(--test-deadline); }
+.cat-option[data-cat="intern"][data-variant="work"] .swatch{ background:var(--intern-work); }
+.cat-option[data-cat="intern"][data-variant="deadline"] .swatch{ background:var(--intern-deadline); }
+.cat-option[data-cat="app"][data-variant="work"] .swatch{ background:var(--app-work); }
+.cat-option[data-cat="app"][data-variant="deadline"] .swatch{ background:var(--app-deadline); }
+.cat-option[data-cat="dorado"][data-variant="work"] .swatch{ background:var(--dorado-work); }
+
+/* Update trigger swatch by data attributes on container */
+#goalCategory[data-cat="ap"][data-variant="work"] .cat-trigger .swatch{ background:var(--ap-work); }
+#goalCategory[data-cat="ap"][data-variant="deadline"] .cat-trigger .swatch{ background:var(--ap-deadline); }
+#goalCategory[data-cat="biz"][data-variant="work"] .cat-trigger .swatch{ background:var(--biz-work); }
+#goalCategory[data-cat="biz"][data-variant="deadline"] .cat-trigger .swatch{ background:var(--biz-deadline); }
+#goalCategory[data-cat="vol"][data-variant="work"] .cat-trigger .swatch{ background:var(--vol-work); }
+#goalCategory[data-cat="vol"][data-variant="deadline"] .cat-trigger .swatch{ background:var(--vol-deadline); }
+#goalCategory[data-cat="test"][data-variant="work"] .cat-trigger .swatch{ background:var(--test-work); }
+#goalCategory[data-cat="test"][data-variant="deadline"] .cat-trigger .swatch{ background:var(--test-deadline); }
+#goalCategory[data-cat="intern"][data-variant="work"] .cat-trigger .swatch{ background:var(--intern-work); }
+#goalCategory[data-cat="intern"][data-variant="deadline"] .cat-trigger .swatch{ background:var(--intern-deadline); }
+#goalCategory[data-cat="app"][data-variant="work"] .cat-trigger .swatch{ background:var(--app-work); }
+#goalCategory[data-cat="app"][data-variant="deadline"] .cat-trigger .swatch{ background:var(--app-deadline); }
+#goalCategory[data-cat="dorado"][data-variant="work"] .cat-trigger .swatch{ background:var(--dorado-work); }
 

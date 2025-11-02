@@ -69,6 +69,45 @@
     <div class="event"><span class="evt-text"></span></div>
   </template>
 
+  <!-- Add Goal Modal (with custom colorized dropdown) -->
+  <div id="goalModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="goalModalTitle">
+      <h3 id="goalModalTitle">Add Monthly Goal</h3>
+
+      <label class="form-row">
+        <span>Name</span>
+        <input id="goalNameInput" type="text" placeholder="e.g., AP Chem practice set x3" />
+      </label>
+
+      <div class="form-row">
+        <span>Category</span>
+        <!-- Custom dropdown -->
+        <div id="goalCategory" class="cat-select" aria-haspopup="listbox" aria-expanded="false">
+          <button id="catTrigger" type="button" class="cat-trigger" aria-label="Select category">
+            <span class="swatch"></span>
+            <span class="label">Application Prep</span>
+            <span class="chev">▾</span>
+          </button>
+          <div id="catMenu" class="cat-menu" role="listbox" tabindex="-1"></div>
+        </div>
+      </div>
+
+      <!-- Live color preview -->
+      <div class="preview-row">
+        <span>Preview</span>
+        <div id="goalPreview" class="mgoal" data-cat="app" data-variant="work">
+          <span class="g-text">Your goal</span>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="goalCancelBtn" class="ghost">Cancel</button>
+        <button id="goalSaveBtn">Add Goal</button>
+      </div>
+    </div>
+  </div>
+
   <script src="./seed-data.js"></script>
   <script src="./script.js"></script>
 </body>
