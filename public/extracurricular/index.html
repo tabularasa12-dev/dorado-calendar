@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Dorado – Extracurricular Roadmap</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="./style.css" rel="stylesheet" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Extracurricular Roadmap</h1>
+    <div class="controls">
+      <button id="btnJumpToday" class="ghost">Jump to Today’s Week</button>
+      <button id="btnResetDone" title="Clear completion (local only)">Reset ✔</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- LEFT: Monthly Goals + Legend -->
+    <aside class="rail rail-monthly">
+      <h2>Monthly Goals</h2>
+      <div id="monthlyGoals"></div>
+
+      <div class="legend">
+        <h3>Legend</h3>
+        <ul>
+          <li><span class="swatch ap-study"></span> AP Studying</li>
+          <li><span class="swatch ap-test"></span> AP Test</li>
+          <li><span class="swatch club-practice"></span> Club/Sports Practice</li>
+          <li><span class="swatch club-event"></span> Club/Sports Event</li>
+          <li><span class="swatch comp-work"></span> Comp/Project Work</li>
+          <li><span class="swatch comp-due"></span> Comp Due Date</li>
+          <li><span class="swatch vol"></span> Volunteering</li>
+          <li><span class="swatch vol-check"></span> Volunteer Check</li>
+          <li><span class="swatch sat-study"></span> SAT Studying</li>
+          <li><span class="swatch sat"></span> SAT</li>
+          <li><span class="swatch intern-work"></span> Program/Intern Work</li>
+          <li><span class="swatch intern-due"></span> Program/Intern Due Date</li>
+          <li><span class="swatch app-prep"></span> College Application Prep</li>
+          <li><span class="swatch app-due"></span> College Application Due Date</li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- CENTER: Calendar -->
+    <section class="roadmap">
+      <div class="header-grid">
+        <div class="hdr-week">Week</div>
+        <div class="hdr-day">Sunday</div>
+        <div class="hdr-day">Monday</div>
+        <div class="hdr-day">Tuesday</div>
+        <div class="hdr-day">Wednesday</div>
+        <div class="hdr-day">Thursday</div>
+        <div class="hdr-day">Friday</div>
+        <div class="hdr-day">Saturday</div>
+      </div>
+      <div id="weeksViewport" class="weeks-viewport"></div>
+    </section>
+
+    <!-- RIGHT: Long-term goals / Guide -->
+    <aside class="rail rail-guide">
+      <h2>Yearly Guide</h2>
+      <div id="guideList" class="stack"></div>
+    </aside>
+  </main>
+
+  <!-- Event template -->
+  <template id="tplEvent">
+    <div class="event"><span class="evt-text"></span></div>
+  </template>
+
+  <script src="./seed-data.js"></script>
+  <script src="./script.js"></script>
+</body>
+</html>
+

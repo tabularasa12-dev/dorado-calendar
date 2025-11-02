@@ -1,5 +1,11 @@
-.env
-node_modules/
+.DS_Store
+*.zip
+
 .env
 .env.*
 *.save
+
+node_modules/
+
+npm-debug.log*
+dist/

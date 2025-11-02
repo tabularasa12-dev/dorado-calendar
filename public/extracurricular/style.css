@@ -1,0 +1,220 @@
+/* ===========================
+   System Theming (Dark/Light)
+   =========================== */
+
+/* Defaults = Dark theme */
+:root{
+  --bg:#0b0c10;
+  --panel:#12141a;
+  --muted:#8b93a7;
+  --text:#e8ebf1;
+  --grid:#1e2230;
+  --header:#131826;
+  --card:#121725;
+  --week-label-bg:#101624;
+  --shadow:0 6px 18px rgba(0,0,0,.25);
+
+  /* Event colors (cards + legend + goals) */
+  --dorado-work:#ffe233;      --dorado-deadline:#f7c400;
+  --vol-work:#70b27a;         --vol-deadline:#2f6b39;
+  --ap-work:#ff6060;          --ap-deadline:#a71818;
+  --biz-work:#ef9546;         --biz-deadline:#a85d18;
+  --app-work:#9aa0a6;         --app-deadline:#4b4f57;
+  --intern-work:#a884f3;      --intern-deadline:#5a35bf;
+  --test-work:#7ab6ff;        --test-deadline:#2a5ea8;
+
+  /* Legend extras */
+  --club-practice:#ef9546;
+  --club-event:#c7742e;
+  --comp-work:#7ab6ff;
+  --comp-due:#2a5ea8;
+  --sat-study:#7ab6ff;
+  --sat:#2a5ea8;
+  --app-prep:#9aa0a6;
+  --app-due:#4b4f57;
+}
+
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f6f7fb;
+    --panel:#ffffff;
+    --muted:#606770;
+    --text:#0b0c10;
+    --grid:#e6e8ef;
+    --header:#f0f2f8;
+    --card:#f4f6fb;
+    --week-label-bg:#ffffff;
+    --shadow:0 6px 18px rgba(0,0,0,.12);
+  }
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+  font-size:12px; /* global matches event text */
+}
+
+/* Header */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 16px; background:var(--panel); border-bottom:1px solid var(--grid);
+  position:sticky; top:0; z-index:5;
+}
+.topbar h1{font-size:18px; margin:0}
+.controls{display:flex; gap:8px}
+button{
+  background:color-mix(in oklab, var(--panel) 80%, black 20%);
+  color:var(--text); border:1px solid var(--grid); border-radius:8px;
+  padding:8px 12px; cursor:pointer;
+}
+button.ghost{background:transparent}
+
+/* Main layout */
+.layout{
+  display:grid;
+  grid-template-columns: 300px 1fr 220px;
+  gap:12px; padding:12px;
+}
+
+/* Rails */
+.rail{
+  background:var(--panel); border:1px solid var(--grid); border-radius:14px; padding:12px;
+  box-shadow: var(--shadow);
+}
+.rail h2{margin:0 0 8px 0; font-size:16px}
+
+/* Calendar panel */
+.roadmap{
+  background:var(--panel); border:1px solid var(--grid); border-radius:14px; box-shadow: var(--shadow);
+  display:flex; flex-direction:column; min-height:0;
+}
+
+/* Days header */
+.header-grid{
+  display:grid;
+  grid-template-columns: 120px repeat(7, 1fr); /* narrower Week column per request */
+  gap:8px; padding:8px; border-bottom:1px solid var(--grid); background:var(--header);
+  position:sticky; top:60px; z-index:2;
+}
+.hdr-week{font-weight:800; color:var(--text)}
+.hdr-day{font-weight:700; color:var(--text); text-align:left}
+
+/* Weeks viewport scrolls (prevents huge empty page space) */
+.weeks-viewport{
+  overflow-y:auto; max-height:70vh; padding:8px;
+}
+
+/* Week row layout */
+.week-row{
+  display:grid;
+  grid-template-columns: 120px repeat(7, 1fr);
+  gap:8px; margin-bottom:8px;
+}
+
+/* Week label (left sticky cell) */
+.week-label{
+  background:var(--week-label-bg); border:1px solid var(--grid); border-radius:10px; padding:8px;
+  position:sticky; left:8px; z-index:1;
+  color:var(--text); font-weight:700;
+}
+
+/* Day cells */
+.day-cell{
+  background:var(--card); border:1px solid var(--grid); border-radius:10px;
+  padding:8px; min-height:120px;
+  display:grid; gap:6px; align-content:flex-start;
+}
+
+/* Event cards */
+.event{
+  border-radius:8px;
+  padding:4px 6px;
+  border:1px solid color-mix(in oklab, var(--grid) 70%, transparent);
+  background:#141a2b;             /* base; category fill overrides below */
+  cursor:pointer;
+  color:#000 !important;
+  height:26px;                     /* fixed height */
+  display:flex;
+  align-items:center;
+  overflow:hidden;                 /* hide overflow like Google Sheets */
+  font-size:12px;
+}
+.event .evt-text{
+  flex:1;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:clip;
+  color:#000 !important;
+}
+.event.done .evt-text{font-weight:800}
+.event.done{outline:2px solid color-mix(in oklab, var(--grid) 70%, transparent)}
+
+/* Category fills for event cards */
+.event[data-cat="dorado"][data-variant="work"]{background:var(--dorado-work)}
+.event[data-cat="dorado"][data-variant="deadline"]{background:var(--dorado-deadline)}
+.event[data-cat="vol"][data-variant="work"]{background:var(--vol-work)}
+.event[data-cat="vol"][data-variant="deadline"]{background:var(--vol-deadline)}
+.event[data-cat="ap"][data-variant="work"]{background:var(--ap-work)}
+.event[data-cat="ap"][data-variant="deadline"]{background:var(--ap-deadline)}
+.event[data-cat="biz"][data-variant="work"]{background:var(--biz-work)}
+.event[data-cat="biz"][data-variant="deadline"]{background:var(--biz-deadline)}
+.event[data-cat="app"][data-variant="work"]{background:var(--app-work)}
+.event[data-cat="app"][data-variant="deadline"]{background:var(--app-deadline)}
+.event[data-cat="intern"][data-variant="work"]{background:var(--intern-work)}
+.event[data-cat="intern"][data-variant="deadline"]{background:var(--intern-deadline)}
+.event[data-cat="test"][data-variant="work"]{background:var(--test-work)}
+.event[data-cat="test"][data-variant="deadline"]{background:var(--test-deadline)}
+
+/* Legend */
+.legend ul{list-style:none; padding:0; margin:8px 0 0 0}
+.legend li{display:flex; align-items:center; gap:8px; margin:6px 0}
+.legend .swatch{
+  display:inline-block; width:14px; height:14px; border-radius:4px;
+  border:1px solid var(--grid); flex:0 0 auto;
+}
+.legend .swatch.ap-study{background:var(--ap-work)}
+.legend .swatch.ap-test{background:var(--ap-deadline)}
+.legend .swatch.club-practice{background:var(--club-practice)}
+.legend .swatch.club-event{background:var(--club-event)}
+.legend .swatch.comp-work{background:var(--comp-work)}
+.legend .swatch.comp-due{background:var(--comp-due)}
+.legend .swatch.vol{background:var(--vol-work)}
+.legend .swatch.vol-check{background:var(--vol-deadline)}
+.legend .swatch.sat-study{background:var(--sat-study)}
+.legend .swatch.sat{background:var(--sat)}
+.legend .swatch.intern-work{background:var(--intern-work)}
+.legend .swatch.intern-due{background:var(--intern-deadline)}
+.legend .swatch.app-prep{background:var(--app-prep)}
+.legend .swatch.app-due{background:var(--app-due)}
+
+/* Goals (Monthly + Yearly) */
+.goal-list{display:grid; gap:8px; margin-top:8px}
+.goal{
+  display:flex; align-items:center; gap:10px;
+  border:1px solid var(--grid); background:var(--card); border-radius:10px;
+  padding:8px; cursor:pointer; user-select:none;
+}
+.goal .g-swatch{
+  width:14px; height:14px; border-radius:4px; border:1px solid var(--grid); flex:0 0 auto;
+}
+.goal .g-text{flex:1}
+.goal.done .g-text{font-weight:800}
+
+/* Goal color mapping via data attributes */
+.goal[data-cat="ap"][data-variant="work"] .g-swatch{background:var(--ap-work)}
+.goal[data-cat="ap"][data-variant="deadline"] .g-swatch{background:var(--ap-deadline)}
+.goal[data-cat="vol"][data-variant="work"] .g-swatch{background:var(--vol-work)}
+.goal[data-cat="vol"][data-variant="deadline"] .g-swatch{background:var(--vol-deadline)}
+.goal[data-cat="intern"][data-variant="work"] .g-swatch{background:var(--intern-work)}
+.goal[data-cat="intern"][data-variant="deadline"] .g-swatch{background:var(--intern-deadline)}
+.goal[data-cat="app"][data-variant="work"] .g-swatch{background:var(--app-work)}
+.goal[data-cat="app"][data-variant="deadline"] .g-swatch{background:var(--app-deadline)}
+.goal[data-cat="test"][data-variant="work"] .g-swatch{background:var(--test-work)}
+.goal[data-cat="test"][data-variant="deadline"] .g-swatch{background:var(--test-deadline)}
+.goal[data-cat="biz"][data-variant="work"] .g-swatch{background:var(--biz-work)}
+.goal[data-cat="biz"][data-variant="deadline"] .g-swatch{background:var(--biz-deadline)}
+.goal[data-cat="dorado"][data-variant="work"] .g-swatch{background:var(--dorado-work)}
+.goal[data-cat="dorado"][data-variant="deadline"] .g-swatch{background:var(--dorado-deadline)}
+
