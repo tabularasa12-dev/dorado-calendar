@@ -79,7 +79,16 @@ body{
   background:#3a1f1f;
   border-color:#5d3232;
 }
-.btn:hover{
+/* new: primary Save buttons (muted f1c233) */
+.btn.primary{
+  background:#c9ae32;          /* muted */
+  border-color:#e1cf6a;
+  color:#000;
+}
+.btn.primary:hover{
+  background:#f1c233;          /* full f1c233 when hovered */
+}
+.btn:hover:not(.primary){
   background:rgba(255,255,255,.04);
 }
 
@@ -251,6 +260,11 @@ body{
   overflow:hidden;
   text-overflow:ellipsis;
 }
+/* completed events in calendar */
+.event .evt-text.done{
+  font-weight:700;
+  text-decoration:line-through;
+}
 
 /* color coding for calendar events */
 .event[data-cat="ap-study"]{background:var(--ap-study);}
@@ -318,21 +332,21 @@ body{
   color:var(--muted);
 }
 
-/* background tints for monthly goals */
-.mgoal[data-cat="ap-study"]{background:color-mix(in srgb, var(--ap-study) 35%, #000 65%);}
-.mgoal[data-cat="ap-test"]{background:color-mix(in srgb, var(--ap-test) 35%, #000 65%);}
-.mgoal[data-cat="club-practice"]{background:color-mix(in srgb, var(--club-practice) 35%, #000 65%);}
-.mgoal[data-cat="club-event"]{background:color-mix(in srgb, var(--club-event) 35%, #000 65%);}
-.mgoal[data-cat="comp-work"]{background:color-mix(in srgb, var(--comp-work) 45%, #000 55%);}
-.mgoal[data-cat="comp-deadline"]{background:color-mix(in srgb, var(--comp-deadline) 45%, #000 55%);}
-.mgoal[data-cat="vol-work"]{background:color-mix(in srgb, var(--vol-work) 35%, #000 65%);}
-.mgoal[data-cat="vol-check"]{background:color-mix(in srgb, var(--vol-check) 35%, #000 65%);}
-.mgoal[data-cat="sat-study"]{background:color-mix(in srgb, var(--sat-study) 35%, #000 65%);}
-.mgoal[data-cat="sat-test"]{background:color-mix(in srgb, var(--sat-test) 35%, #000 65%);}
-.mgoal[data-cat="program-work"]{background:color-mix(in srgb, var(--program-work) 35%, #000 65%);}
-.mgoal[data-cat="program-deadline"]{background:color-mix(in srgb, var(--program-deadline) 35%, #000 65%);}
-.mgoal[data-cat="app-prep"]{background:color-mix(in srgb, var(--app-prep) 35%, #000 65%);}
-.mgoal[data-cat="app-deadline"]{background:color-mix(in srgb, var(--app-deadline) 35%, #000 65%);}
+/* less-muted background tints for monthly goals (~60% color) */
+.mgoal[data-cat="ap-study"]{background:color-mix(in srgb, var(--ap-study) 60%, #000 40%);}
+.mgoal[data-cat="ap-test"]{background:color-mix(in srgb, var(--ap-test) 60%, #000 40%);}
+.mgoal[data-cat="club-practice"]{background:color-mix(in srgb, var(--club-practice) 60%, #000 40%);}
+.mgoal[data-cat="club-event"]{background:color-mix(in srgb, var(--club-event) 60%, #000 40%);}
+.mgoal[data-cat="comp-work"]{background:color-mix(in srgb, var(--comp-work) 60%, #000 40%);}
+.mgoal[data-cat="comp-deadline"]{background:color-mix(in srgb, var(--comp-deadline) 60%, #000 40%);}
+.mgoal[data-cat="vol-work"]{background:color-mix(in srgb, var(--vol-work) 60%, #000 40%);}
+.mgoal[data-cat="vol-check"]{background:color-mix(in srgb, var(--vol-check) 60%, #000 40%);}
+.mgoal[data-cat="sat-study"]{background:color-mix(in srgb, var(--sat-study) 60%, #000 40%);}
+.mgoal[data-cat="sat-test"]{background:color-mix(in srgb, var(--sat-test) 60%, #000 40%);}
+.mgoal[data-cat="program-work"]{background:color-mix(in srgb, var(--program-work) 60%, #000 40%);}
+.mgoal[data-cat="program-deadline"]{background:color-mix(in srgb, var(--program-deadline) 60%, #000 40%);}
+.mgoal[data-cat="app-prep"]{background:color-mix(in srgb, var(--app-prep) 60%, #000 40%);}
+.mgoal[data-cat="app-deadline"]{background:color-mix(in srgb, var(--app-deadline) 60%, #000 40%);}
 
 /* ======================
    Modals
@@ -364,16 +378,14 @@ body{
   margin:0 0 10px 0;
   font-size:16px;
 }
-.form-row,
-.preview-row{
+.form-row{
   display:grid;
   grid-template-columns: 110px minmax(0,1fr);
   gap:8px;
   margin:8px 0;
   align-items:center;
 }
-.form-row label,
-.preview-row label{
+.form-row label{
   font-size:13px;
   color:var(--muted);
 }
@@ -429,26 +441,6 @@ body{
 }
 .switch input:checked + .slider:before{
   transform:translateX(16px);
-}
-
-/* Goal preview */
-.goal-preview{
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  padding:4px 6px;
-  border-radius:999px;
-  border:1px solid var(--grid);
-  background:#161a26;
-}
-.goal-preview .swatch{
-  width:10px;
-  height:10px;
-  border-radius:50%;
-  background:#666;
-}
-.goal-preview .g-text.done{
-  font-weight:700;
 }
 
 /* Responsive */
