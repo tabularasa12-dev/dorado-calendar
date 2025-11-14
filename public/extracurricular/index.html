@@ -7,42 +7,49 @@
   <link href="./style.css" rel="stylesheet" />
 </head>
 <body>
+  <!-- Top bar -->
   <header class="topbar">
     <h1>Extracurricular Roadmap</h1>
     <div class="controls">
-      <button id="btnJumpToday" class="ghost">Jump to Today’s Week</button>
-      <button id="btnResetDone" title="Clear completion (local only)">Reset ✔</button>
+      <button id="btnJumpToday" class="btn ghost">Jump to Today’s Week</button>
+      <button id="btnResetDone" class="btn" title="Clear local data">Reset</button>
     </div>
   </header>
 
   <main class="layout">
-    <!-- LEFT: Monthly Goals + Legend -->
-    <aside class="rail rail-monthly">
-      <h2>Monthly Goals</h2>
-      <div id="monthlyGoals"></div>
+    <!-- LEFT COLUMN: Monthly Goals + Legend -->
+    <div class="left-col">
+      <section class="rail" id="goalsPanel">
+        <h2>Monthly Goals</h2>
+        <div class="body">
+          <div id="monthlyGoals"></div>
+        </div>
+      </section>
 
-      <div class="legend">
-        <h3>Legend</h3>
-        <ul>
-          <li><span class="swatch ap-study"></span> AP Studying</li>
-          <li><span class="swatch ap-test"></span> AP Test</li>
-          <li><span class="swatch club-practice"></span> Club/Sports Practice</li>
-          <li><span class="swatch club-event"></span> Club/Sports Event</li>
-          <li><span class="swatch comp-work"></span> Comp/Project Work</li>
-          <li><span class="swatch comp-due"></span> Comp Due Date</li>
-          <li><span class="swatch vol"></span> Volunteering</li>
-          <li><span class="swatch vol-check"></span> Volunteer Check</li>
-          <li><span class="swatch sat-study"></span> SAT Studying</li>
-          <li><span class="swatch sat"></span> SAT</li>
-          <li><span class="swatch intern-work"></span> Program/Intern Work</li>
-          <li><span class="swatch intern-due"></span> Program/Intern Due Date</li>
-          <li><span class="swatch app-prep"></span> College Application Prep</li>
-          <li><span class="swatch app-due"></span> College Application Due Date</li>
-        </ul>
-      </div>
-    </aside>
+      <aside class="rail legend">
+        <h2>Legend</h2>
+        <div class="body">
+          <ul>
+            <li><span class="swatch ap-study"></span> AP Studying</li>
+            <li><span class="swatch ap-test"></span> AP Test</li>
+            <li><span class="swatch club-practice"></span> Club/Sports Practice</li>
+            <li><span class="swatch club-event"></span> Club/Sports Event</li>
+            <li><span class="swatch comp-work"></span> Comp/Project Work</li>
+            <li><span class="swatch comp-deadline"></span> Comp Deadline</li>
+            <li><span class="swatch vol-work"></span> Volunteering</li>
+            <li><span class="swatch vol-check"></span> Volunteer Check</li>
+            <li><span class="swatch sat-study"></span> SAT Studying</li>
+            <li><span class="swatch sat-test"></span> SAT</li>
+            <li><span class="swatch program-work"></span> Program/Intern Work</li>
+            <li><span class="swatch program-deadline"></span> Program/Intern Deadline</li>
+            <li><span class="swatch app-prep"></span> College Application Prep</li>
+            <li><span class="swatch app-deadline"></span> College Application Due Date</li>
+          </ul>
+        </div>
+      </aside>
+    </div>
 
-    <!-- CENTER: Calendar -->
+    <!-- RIGHT COLUMN: Sunday–Saturday calendar -->
     <section class="roadmap">
       <div class="header-grid">
         <div class="hdr-week">Week</div>
@@ -54,20 +61,110 @@
         <div class="hdr-day">Friday</div>
         <div class="hdr-day">Saturday</div>
       </div>
-      <div id="weeksViewport" class="weeks-viewport"></div>
+      <div class="weeks-viewport" id="weeksViewport"></div>
     </section>
-
-    <!-- RIGHT: Long-term goals / Guide -->
-    <aside class="rail rail-guide">
-      <h2>Yearly Guide</h2>
-      <div id="guideList" class="stack"></div>
-    </aside>
   </main>
 
-  <!-- Event template -->
+  <!-- Event template for calendar -->
   <template id="tplEvent">
-    <div class="event"><span class="evt-text"></span></div>
+    <div class="event" draggable="true">
+      <span class="evt-text"></span>
+    </div>
   </template>
+
+  <!-- Modal: Monthly Goal -->
+  <div class="modal hidden" id="goalModal" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true">
+      <h3 id="goalModalTitle">Monthly Goal</h3>
+
+      <div class="form-row">
+        <label for="goalNameInput">Title</label>
+        <input id="goalNameInput" type="text" placeholder="Ex: Finish pitch draft" />
+      </div>
+
+      <div class="form-row">
+        <label for="goalCatSelect">Category</label>
+        <select id="goalCatSelect">
+          <option value="ap-study">AP Studying</option>
+          <option value="ap-test">AP Test</option>
+          <option value="club-practice">Club/Sports Practice</option>
+          <option value="club-event">Club/Sports Event</option>
+          <option value="comp-work">Comp/Project Work</option>
+          <option value="comp-deadline">Comp Deadline</option>
+          <option value="vol-work">Volunteering</option>
+          <option value="vol-check">Volunteer Check</option>
+          <option value="sat-study">SAT Studying</option>
+          <option value="sat-test">SAT</option>
+          <option value="program-work">Program/Intern Work</option>
+          <option value="program-deadline">Program/Intern Deadline</option>
+          <option value="app-prep">College Application Prep</option>
+          <option value="app-deadline">College Application Due Date</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label>Completed</label>
+        <label class="switch">
+          <input id="goalDoneInput" type="checkbox" />
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="preview-row">
+        <label>Preview</label>
+        <div id="goalPreview" class="goal-preview">
+          <span class="swatch"></span>
+          <span class="g-text">Sample</span>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn ghost" id="goalCancelBtn">Cancel</button>
+        <button class="btn danger" id="goalDeleteBtn">Delete</button>
+        <button class="btn" id="goalSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Activity (Sunday–Saturday calendar) -->
+  <div class="modal hidden" id="activityModal" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true">
+      <h3 id="activityModalTitle">Activity</h3>
+
+      <div class="form-row">
+        <label for="actNameInput">Title</label>
+        <input id="actNameInput" type="text" placeholder="Ex: AP Chem practice set" />
+      </div>
+
+      <div class="form-row">
+        <label for="actCatSelect">Category</label>
+        <select id="actCatSelect">
+          <option value="ap-study">AP Studying</option>
+          <option value="ap-test">AP Test</option>
+          <option value="club-practice">Club/Sports Practice</option>
+          <option value="club-event">Club/Sports Event</option>
+          <option value="comp-work">Comp/Project Work</option>
+          <option value="comp-deadline">Comp Deadline</option>
+          <option value="vol-work">Volunteering</option>
+          <option value="vol-check">Volunteer Check</option>
+          <option value="sat-study">SAT Studying</option>
+          <option value="sat-test">SAT</option>
+          <option value="program-work">Program/Intern Work</option>
+          <option value="program-deadline">Program/Intern Deadline</option>
+          <option value="app-prep">College Application Prep</option>
+          <option value="app-deadline">College Application Due Date</option>
+        </select>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn ghost" id="actCancelBtn">Cancel</button>
+        <button class="btn danger" id="actDeleteBtn">Delete</button>
+        <button class="btn" id="actSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
 
   <script src="./seed-data.js"></script>
   <script src="./script.js"></script>
