@@ -22,7 +22,7 @@
       <section class="rail" id="goalsPanel">
         <h2 id="goalsToggle">Monthly Goals</h2>
         <div class="body">
-          <!-- This container is reused for both Monthly + Yearly views -->
+          <!-- Reused for both Monthly + Yearly goals -->
           <div id="goalsContainer"></div>
         </div>
       </section>
@@ -157,6 +157,19 @@
           <input id="actDoneInput" type="checkbox" />
           <span class="slider"></span>
         </label>
+      </div>
+
+      <!-- NEW: Repeat options (same structure as weekly calendar) -->
+      <div class="form-row">
+        <label for="actRepeatSelect">Repeat</label>
+        <select id="actRepeatSelect">
+          <option value="none">Does not repeat</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly-date">Monthly on this date</option>
+          <option value="monthly-nth-weekday">Monthly on this weekday</option>
+          <option value="yearly">Yearly on this date</option>
+        </select>
       </div>
 
       <div class="modal-actions">
