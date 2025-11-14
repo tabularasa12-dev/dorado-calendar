@@ -158,6 +158,24 @@
         </select>
       </div>
 
+      <!-- NEW: Completed switch for activities -->
+      <div class="form-row">
+        <label>Completed</label>
+        <label class="switch">
+          <input id="actDoneInput" type="checkbox" />
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <!-- NEW: Preview for activities -->
+      <div class="preview-row">
+        <label>Preview</label>
+        <div id="actPreview" class="goal-preview">
+          <span class="swatch"></span>
+          <span class="g-text">Sample</span>
+        </div>
+      </div>
+
       <div class="modal-actions">
         <button class="btn ghost" id="actCancelBtn">Cancel</button>
         <button class="btn danger" id="actDeleteBtn">Delete</button>
