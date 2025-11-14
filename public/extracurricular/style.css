@@ -79,7 +79,7 @@ body{
   background:#3a1f1f;
   border-color:#5d3232;
 }
-/* new: primary Save buttons (muted f1c233) */
+/* primary Save buttons (muted f1c233) */
 .btn.primary{
   background:#c9ae32;          /* muted */
   border-color:#e1cf6a;
@@ -201,7 +201,7 @@ body{
 .week-row{
   display:grid;
   grid-template-columns: 120px repeat(7,minmax(0,1fr));
-  min-height:80px;
+  min-height:110px; /* default height to comfortably fit ~3 events */
   border-bottom:1px solid var(--grid);
 }
 .week-label{
@@ -218,7 +218,7 @@ body{
   position:relative;
   padding:6px 8px;              /* equal padding left/right */
   border-right:1px solid var(--grid);
-  min-height:80px;
+  min-height:110px;             /* enough vertical space for ~3 events */
   display:flex;
   flex-wrap:wrap;
   align-content:flex-start;
@@ -258,15 +258,14 @@ body{
   flex:1;
   white-space:nowrap;
   overflow:hidden;
-  text-overflow:ellipsis;
+  text-overflow:clip;           /* spreadsheet-style: no ellipsis */
 }
-/* completed events in calendar */
+/* completed events in calendar: bold only */
 .event .evt-text.done{
   font-weight:700;
-  text-decoration:line-through;
 }
 
-/* color coding for calendar events */
+/* color coding for calendar events (full legend color) */
 .event[data-cat="ap-study"]{background:var(--ap-study);}
 .event[data-cat="ap-test"]{background:var(--ap-test);}
 .event[data-cat="club-practice"]{background:var(--club-practice);}
@@ -319,9 +318,15 @@ body{
   padding:6px 8px;
   border-radius:8px;
   border:1px solid rgba(0,0,0,.2);
-  background:var(--card);
   cursor:pointer;
   font-size:13px;
+  color:#000;
+}
+.mgoal .g-text{
+  flex:1;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:clip;           /* spreadsheet-style overflow for goals too */
 }
 .mgoal .g-text.done{
   font-weight:700;
@@ -332,21 +337,26 @@ body{
   color:var(--muted);
 }
 
-/* less-muted background tints for monthly goals (~60% color) */
-.mgoal[data-cat="ap-study"]{background:color-mix(in srgb, var(--ap-study) 60%, #000 40%);}
-.mgoal[data-cat="ap-test"]{background:color-mix(in srgb, var(--ap-test) 60%, #000 40%);}
-.mgoal[data-cat="club-practice"]{background:color-mix(in srgb, var(--club-practice) 60%, #000 40%);}
-.mgoal[data-cat="club-event"]{background:color-mix(in srgb, var(--club-event) 60%, #000 40%);}
-.mgoal[data-cat="comp-work"]{background:color-mix(in srgb, var(--comp-work) 60%, #000 40%);}
-.mgoal[data-cat="comp-deadline"]{background:color-mix(in srgb, var(--comp-deadline) 60%, #000 40%);}
-.mgoal[data-cat="vol-work"]{background:color-mix(in srgb, var(--vol-work) 60%, #000 40%);}
-.mgoal[data-cat="vol-check"]{background:color-mix(in srgb, var(--vol-check) 60%, #000 40%);}
-.mgoal[data-cat="sat-study"]{background:color-mix(in srgb, var(--sat-study) 60%, #000 40%);}
-.mgoal[data-cat="sat-test"]{background:color-mix(in srgb, var(--sat-test) 60%, #000 40%);}
-.mgoal[data-cat="program-work"]{background:color-mix(in srgb, var(--program-work) 60%, #000 40%);}
-.mgoal[data-cat="program-deadline"]{background:color-mix(in srgb, var(--program-deadline) 60%, #000 40%);}
-.mgoal[data-cat="app-prep"]{background:color-mix(in srgb, var(--app-prep) 60%, #000 40%);}
-.mgoal[data-cat="app-deadline"]{background:color-mix(in srgb, var(--app-deadline) 60%, #000 40%);}
+/* Monthly goals use FULL legend colors (no tiny square) */
+.mgoal[data-cat="ap-study"]{background:var(--ap-study);}
+.mgoal[data-cat="ap-test"]{background:var(--ap-test);}
+.mgoal[data-cat="club-practice"]{background:var(--club-practice);}
+.mgoal[data-cat="club-event"]{background:var(--club-event);}
+.mgoal[data-cat="comp-work"]{background:var(--comp-work);}
+.mgoal[data-cat="comp-deadline"]{background:var(--comp-deadline);}
+.mgoal[data-cat="vol-work"]{background:var(--vol-work);}
+.mgoal[data-cat="vol-check"]{background:var(--vol-check);}
+.mgoal[data-cat="sat-study"]{background:var(--sat-study);}
+.mgoal[data-cat="sat-test"]{background:var(--sat-test);}
+.mgoal[data-cat="program-work"]{background:var(--program-work);}
+.mgoal[data-cat="program-deadline"]{background:var(--program-deadline);}
+.mgoal[data-cat="app-prep"]{background:var(--app-prep);}
+.mgoal[data-cat="app-deadline"]{background:var(--app-deadline);}
+
+.mgoal.dragging{
+  opacity:.7;
+  outline:2px dashed #fff;
+}
 
 /* ======================
    Modals
