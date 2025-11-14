@@ -124,6 +124,7 @@ body{
   background:#151929;
   border-bottom:1px solid var(--grid);
   font-size:14px;
+  cursor:pointer; /* header is clickable toggle */
 }
 .rail .body{
   padding:10px 14px;
@@ -216,7 +217,7 @@ body{
 
 .day-cell{
   position:relative;
-  padding:6px 8px;              /* equal padding left/right */
+  padding:8px;                  /* even padding all around */
   border-right:1px solid var(--grid);
   min-height:110px;             /* enough vertical space for ~3 events */
   display:flex;
@@ -249,7 +250,7 @@ body{
   box-shadow:0 2px 4px rgba(0,0,0,.4);
   cursor:grab;
   color:#000;
-  margin:0 2px;                 /* symmetric horizontal margins */
+  margin:2px 2px;               /* even margins on all sides */
 }
 .event:active{
   cursor:grabbing;
@@ -286,10 +287,10 @@ body{
 }
 
 /* ======================
-   Monthly Goals
+   Goals (Monthly + Yearly share the same look)
    ====================== */
 
-#monthlyGoals{
+#goalsContainer{
   display:flex;
   flex-direction:column;
   gap:10px;
@@ -337,7 +338,7 @@ body{
   color:var(--muted);
 }
 
-/* Monthly goals use FULL legend colors (no tiny square) */
+/* use full legend colors (no tiny square inside the card) */
 .mgoal[data-cat="ap-study"]{background:var(--ap-study);}
 .mgoal[data-cat="ap-test"]{background:var(--ap-test);}
 .mgoal[data-cat="club-practice"]{background:var(--club-practice);}

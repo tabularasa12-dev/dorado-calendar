@@ -17,12 +17,13 @@
   </header>
 
   <main class="layout">
-    <!-- LEFT COLUMN: Monthly Goals + Legend -->
+    <!-- LEFT COLUMN: Goals (Monthly / Yearly toggle) + Legend -->
     <div class="left-col">
       <section class="rail" id="goalsPanel">
-        <h2>Monthly Goals</h2>
+        <h2 id="goalsToggle">Monthly Goals</h2>
         <div class="body">
-          <div id="monthlyGoals"></div>
+          <!-- This container is reused for both Monthly + Yearly views -->
+          <div id="goalsContainer"></div>
         </div>
       </section>
 
@@ -72,11 +73,11 @@
     </div>
   </template>
 
-  <!-- Modal: Monthly Goal -->
+  <!-- Modal: Goal (used for both Monthly + Yearly goals) -->
   <div class="modal hidden" id="goalModal" aria-hidden="true">
     <div class="modal-backdrop"></div>
     <div class="modal-panel" role="dialog" aria-modal="true">
-      <h3 id="goalModalTitle">Monthly Goal</h3>
+      <h3 id="goalModalTitle">Goal</h3>
 
       <div class="form-row">
         <label for="goalNameInput">Title</label>
