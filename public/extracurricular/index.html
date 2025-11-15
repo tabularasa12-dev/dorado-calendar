@@ -159,7 +159,7 @@
         </label>
       </div>
 
-      <!-- NEW: Repeat options (same structure as weekly calendar) -->
+      <!-- Repeat options: actually used to create repeated events -->
       <div class="form-row">
         <label for="actRepeatSelect">Repeat</label>
         <select id="actRepeatSelect">
@@ -176,6 +176,19 @@
         <button class="btn ghost" id="actCancelBtn">Cancel</button>
         <button class="btn danger" id="actDeleteBtn">Delete</button>
         <button class="btn primary" id="actSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom confirmation dialog (used for deletes, etc.) -->
+  <div class="modal hidden" id="confirmModal" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true">
+      <h3 id="confirmTitle">Confirm</h3>
+      <p id="confirmMessage" style="font-size:13px; color:#e8ebf1; margin:6px 0 12px;"></p>
+      <div class="modal-actions" id="confirmButtons">
+        <!-- Buttons are injected dynamically:
+             primary (yellow), secondary (ghost), optional extra -->
       </div>
     </div>
   </div>

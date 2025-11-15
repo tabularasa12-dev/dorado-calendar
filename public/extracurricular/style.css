@@ -243,7 +243,7 @@ body{
   padding:4px 6px;
   font-size:12px;
   font-weight:500;
-  max-width:100%;
+  width:100%;                  /* <<< constant width for all event cards */
   display:flex;
   align-items:center;
   border:1px solid rgba(0,0,0,.25);
