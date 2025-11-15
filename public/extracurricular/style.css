@@ -101,6 +101,7 @@ body{
   grid-template-columns: 320px minmax(0,1fr);
   gap:16px;
   padding:16px;
+  /* no fixed min-height: let the tallest column (legend+goals or calendar) define it */
 }
 .left-col{
   display:flex;
@@ -180,6 +181,7 @@ body{
   overflow:hidden;
   display:flex;
   flex-direction:column;
+  /* no fixed height: column will naturally extend to bottom of legend */
 }
 .header-grid{
   display:grid;
@@ -195,14 +197,14 @@ body{
 }
 
 .weeks-viewport{
-  max-height:calc(100vh - 180px);
-  overflow:auto;
+  /* let content define height; page scrolls, not a tiny inner scrollbox */
+  overflow:visible;
 }
 
 .week-row{
   display:grid;
   grid-template-columns: 120px repeat(7,minmax(0,1fr));
-  min-height:110px; /* default height to comfortably fit ~3 events */
+  min-height:110px; /* default height: tuned for ~3 events */
   border-bottom:1px solid var(--grid);
 }
 .week-label{
@@ -217,9 +219,9 @@ body{
 
 .day-cell{
   position:relative;
-  padding:8px;                  /* even padding all around */
+  padding:8px;                  /* even padding */
   border-right:1px solid var(--grid);
-  min-height:110px;             /* enough vertical space for ~3 events */
+  min-height:110px;             /* ~3 event cards tall before growing */
   display:flex;
   flex-wrap:wrap;
   align-content:flex-start;
@@ -240,17 +242,17 @@ body{
 
 .event{
   border-radius:6px;
-  padding:4px 6px;
-  font-size:12px;
+  padding:6px 8px;             /* taller card so short titles don’t look tiny */
+  font-size:13px;
   font-weight:500;
-  width:100%;                  /* <<< constant width for all event cards */
+  width:100%;                  /* constant width for all event cards */
   display:flex;
   align-items:center;
   border:1px solid rgba(0,0,0,.25);
   box-shadow:0 2px 4px rgba(0,0,0,.4);
   cursor:grab;
   color:#000;
-  margin:2px 2px;               /* even margins on all sides */
+  margin:3px 2px;              /* a bit more vertical spacing */
 }
 .event:active{
   cursor:grabbing;
