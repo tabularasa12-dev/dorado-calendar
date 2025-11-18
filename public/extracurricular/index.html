@@ -15,10 +15,21 @@
     </div>
   </header>
 
-  <main class="layout">
+  <main class="layout" id="layout">
     <!-- LEFT: Monthly Goals + Legend -->
     <aside class="rail rail-monthly">
-      <h2>Monthly Goals</h2>
+      <div class="goals-header">
+        <h2 class="goals-title">Monthly Goals</h2>
+        <button
+          id="btnToggleGoals"
+          class="goals-toggle"
+          aria-label="Collapse Monthly Goals"
+          title="Collapse Monthly Goals"
+        >
+          ❮
+        </button>
+      </div>
+
       <div id="monthlyGoals"></div>
 
       <div class="legend">
@@ -29,7 +40,7 @@
           <li><span class="swatch club-practice"></span> Club/Sports Practice</li>
           <li><span class="swatch club-event"></span> Club/Sports Event</li>
           <li><span class="swatch comp-work"></span> Comp/Project Work</li>
-          <li><span class="swatch comp-due"></span> Comp Due Date</li>
+          <li><span class="swatch comp-due"></span> Comp Deadline</li>
           <li><span class="swatch vol"></span> Volunteering</li>
           <li><span class="swatch vol-check"></span> Volunteer Check</li>
           <li><span class="swatch sat-study"></span> SAT Studying</li>
@@ -56,57 +67,12 @@
       </div>
       <div id="weeksViewport" class="weeks-viewport"></div>
     </section>
-
-    <!-- RIGHT: Long-term goals / Guide -->
-    <aside class="rail rail-guide">
-      <h2>Yearly Guide</h2>
-      <div id="guideList" class="stack"></div>
-    </aside>
   </main>
 
   <!-- Event template -->
   <template id="tplEvent">
     <div class="event"><span class="evt-text"></span></div>
   </template>
-
-  <!-- Add Goal Modal (with custom colorized dropdown) -->
-  <div id="goalModal" class="modal hidden" aria-hidden="true">
-    <div class="modal-backdrop"></div>
-    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="goalModalTitle">
-      <h3 id="goalModalTitle">Add Monthly Goal</h3>
-
-      <label class="form-row">
-        <span>Name</span>
-        <input id="goalNameInput" type="text" placeholder="e.g., AP Chem practice set x3" />
-      </label>
-
-      <div class="form-row">
-        <span>Category</span>
-        <!-- Custom dropdown -->
-        <div id="goalCategory" class="cat-select" aria-haspopup="listbox" aria-expanded="false">
-          <button id="catTrigger" type="button" class="cat-trigger" aria-label="Select category">
-            <span class="swatch"></span>
-            <span class="label">Application Prep</span>
-            <span class="chev">▾</span>
-          </button>
-          <div id="catMenu" class="cat-menu" role="listbox" tabindex="-1"></div>
-        </div>
-      </div>
-
-      <!-- Live color preview -->
-      <div class="preview-row">
-        <span>Preview</span>
-        <div id="goalPreview" class="mgoal" data-cat="app" data-variant="work">
-          <span class="g-text">Your goal</span>
-        </div>
-      </div>
-
-      <div class="modal-actions">
-        <button id="goalCancelBtn" class="ghost">Cancel</button>
-        <button id="goalSaveBtn">Add Goal</button>
-      </div>
-    </div>
-  </div>
 
   <script src="./seed-data.js"></script>
   <script src="./script.js"></script>
